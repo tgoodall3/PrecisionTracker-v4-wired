@@ -1,0 +1,41 @@
+import express from 'express';
+import { Job, Task } from '../models/index.js';
+import { requireAuth } from '../middleware/auth.js';
+
+const router = express.Router();
+
+router.get('/', requireAuth(), async (_req, res) => {
+  const items = await Job.findAll({ order: [['id', 'DESC']] });
+  res.json(items);
+});
+
+router.get('/:id', requireAuth(), async (req, res) => {
+  const job = await Job.findByPk(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Not found' });
+  res.json(job);
+});
+
+router.post('/', requireAuth(), async (req, res) => {
+  const { estimateId, customerId, jobsiteId, ...rest } = req.body || {};
+  const payload = { ...rest, estimateId, customerId, jobsiteId };
+  const created = await Job.create(payload);
+  res.json(created);
+});
+
+router.patch('/:id', requireAuth(), async (req, res) => {
+  const job = await Job.findByPk(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Not found' });
+  const { estimateId, customerId, jobsiteId, ...rest } = req.body || {};
+  const update = { ...rest, estimateId, customerId, jobsiteId };
+  await job.update(update);
+  res.json(job);
+});
+
+router.delete('/:id', requireAuth(), async (req, res) => {
+  const job = await Job.findByPk(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Not found' });
+  await job.destroy();
+  res.json({ ok: true });
+});
+
+export default router;

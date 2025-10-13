@@ -1,0 +1,45 @@
+
+<h1>Estimate #{{id}}</h1>
+<div class="card">
+  <div><span class="label">Status:</span> <strong>{{status}}</strong></div>
+  <div><span class="label">Tax Rate:</span> {{taxRate}}%</div>
+</div>
+
+<div class="card">
+  <h3>Line Items</h3>
+  <div class="grid">
+    {{#each items}}
+      <div class="row">
+        <div><strong>{{description}}</strong></div>
+        <div>Qty: {{qty}} × ${{unitPrice}} = ${{line}}</div>
+      </div>
+    {{/each}}
+  </div>
+</div>
+
+<div class="card">
+  <h3>Totals</h3>
+  <div>Subtotal: ${{subtotal}}</div>
+  <div>Tax: ${{tax}}</div>
+  <div><strong>Total: ${{total}}</strong></div>
+</div>
+
+<div class="card">
+  <h3>Approve & Sign</h3>
+  {{#if signed}}
+    <div class="sig"><img src="{{signatureUrl}}" alt="Signature" height="120"/></div>
+    <p>Already approved.</p>
+  {{else}}
+    <form method="POST" action="/portal/estimate/{{id}}/approve">
+      <input type="hidden" name="redirect" value="/portal/estimate/{{id}}">
+      <button class="btn primary" type="submit">Approve</button>
+    </form>
+  {{/if}}
+</div>
+
+<div class="card">
+  <h3>Pay Online</h3>
+  <a class="btn" href="{{payUrl}}" target="_blank" rel="noopener">Open Payment Link</a>
+</div>
+
+<p><a class="btn" href="/pdf/estimate/{{id}}">Download PDF</a></p>

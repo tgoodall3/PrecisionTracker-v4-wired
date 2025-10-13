@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Run PrecisionTracker (API + Expo)",
+      "configurations": [
+        "Backend: Node",
+        "Mobile: Expo (npm)"
+      ]
+    }
+  ],
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Backend: Node",
+      "program": "${workspaceFolder}/backend/src/server.js",
+      "runtimeExecutable": "node",
+      "envFile": "${workspaceFolder}/backend/.env",
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Mobile: Expo (npm)",
+      "program": "${workspaceFolder}/mobile/node_modules/.bin/expo",
+      "args": [
+        "start"
+      ],
+      "cwd": "${workspaceFolder}/mobile",
+      "console": "integratedTerminal"
+    }
+  ]
+}
