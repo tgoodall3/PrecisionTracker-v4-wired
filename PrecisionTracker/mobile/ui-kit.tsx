@@ -4,25 +4,26 @@ import { Platform, Pressable, Text, TextInput, View, ViewStyle } from 'react-nat
 
 export const theme = {
   color: {
-    bg: '#0B0C10',
-    surface: '#111217',
-    card: '#151724',
-    cardBorder: '#23263a',
-    text: '#F2F3F5',
-    textMuted: '#AEB3BE',
-    primary: '#6C8CFF',
-    primaryFg: '#0B0C10',
-    success: '#22c55e',
-    warning: '#f59e0b',
-    danger: '#ef4444',
-    outline: '#3b3f55',
-    pill: '#1e2233',
+    bg: '#F1F5F9',
+    surface: '#FFFFFF',
+    card: '#FFFFFF',
+    cardBorder: '#CBD5E1',
+    text: '#0F172A',
+    textMuted: '#64748B',
+    primary: '#10B981',
+    primaryFg: '#FFFFFF',
+    ink: '#0F172A',
+    success: '#10B981',
+    warning: '#FACC15',
+    danger: '#EF4444',
+    outline: '#CBD5E1',
+    pill: '#0F172A',
   },
   radius: { xs: 6, sm: 10, md: 14, lg: 20 },
   space: (n: number) => 4 * n,
   font: { h1: 22, h2: 18, body: 15, small: 13 },
   shadow: Platform.select({
-    ios: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 6 } },
+    ios: { shadowColor: '#0F172A', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } },
     android: { elevation: 2 },
   }) as ViewStyle,
 };
@@ -74,7 +75,7 @@ export const Card: React.FC<{children: React.ReactNode; padded?: boolean; onPres
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      android_ripple={{ color: '#2b2f44' }}
+      android_ripple={{ color: '#E2E8F0' }}
       style={{ borderRadius: theme.radius.md }}
       onPress={onPress}
     >
@@ -101,7 +102,7 @@ export const Input: React.FC<React.ComponentProps<typeof TextInput>> = (props) =
         paddingVertical: theme.space(3),
         paddingHorizontal: theme.space(3),
         color: theme.color.text,
-        backgroundColor: '#0E1020',
+        backgroundColor: theme.color.surface,
         fontSize: theme.font.body,
       },
       props.style,
@@ -128,8 +129,11 @@ export const Button: React.FC<{
 
   const fg =
     variant === 'primary' ? theme.color.primaryFg :
+    variant === 'danger' ? '#FFFFFF' :
+    variant === 'success' ? '#FFFFFF' :
+    variant === 'warning' ? theme.color.ink :
     variant === 'ghost' || variant === 'outline' ? theme.color.text :
-    variant === 'pill' ? theme.color.text : '#0B0C10';
+    variant === 'pill' ? '#FFFFFF' : theme.color.text;
 
   const border =
     variant === 'outline' ? theme.color.outline :
@@ -140,7 +144,7 @@ export const Button: React.FC<{
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={a11yLabel || title}
-      android_ripple={{ color: '#2b2f44' }}
+      android_ripple={{ color: '#E2E8F0' }}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [

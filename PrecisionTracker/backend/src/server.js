@@ -16,7 +16,12 @@ import integRouter from './routes/integrations.js';
 import usersRouter from './routes/users.js';
 import calendarRouter from './routes/calendar.js';
 import changeOrdersRouter from './routes/changeOrders.js';
+import attachmentsRouter from './routes/attachments.js';
+import paymentsRouter from './routes/payments.js';
+import remindersRouter from './routes/reminders.js';
+import analyticsRouter from './routes/analytics.js';
 import { ensureSchema } from './utils/ensureSchema.js';
+import { startReminderWorker } from './workers/reminderWorker.js';
 
 const app = express();
 app.use(cors());
@@ -59,6 +64,10 @@ app.use('/portal', portalRouter);
 app.use('/users', usersRouter);
 app.use('/calendar', calendarRouter);
 app.use('/change-orders', changeOrdersRouter);
+app.use('/attachments', attachmentsRouter);
+app.use('/payments', paymentsRouter);
+app.use('/reminders', remindersRouter);
+app.use('/analytics', analyticsRouter);
 
 // Global error handler
 app.use((err, _req, res, _next) => {
@@ -71,6 +80,7 @@ async function start() {
   await sequelize.authenticate();
   console.log('DB connected');
   await ensureSchema();
+  startReminderWorker();
   app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));
 }
 start();

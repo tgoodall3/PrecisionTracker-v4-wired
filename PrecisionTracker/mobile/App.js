@@ -3,15 +3,18 @@ import React, { useEffect, useState, createContext, useContext, useRef, useCallb
 import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import {Text, TextInput, Button, FlatList, TouchableOpacity, SafeAreaView, Alert, Image, ScrollView, RefreshControl, ActivityIndicator, Modal, useWindowDimensions } from 'react-native';
+import {Text, TextInput, FlatList, TouchableOpacity, SafeAreaView, Alert, Image, ScrollView, RefreshControl, ActivityIndicator, Modal, useWindowDimensions, Linking, Share } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import * as SQLite from 'expo-sqlite';
 import Svg, { Path } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import { Platform, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Buffer } from 'buffer';
 // import * as SQLite from 'expo-sqlite';
 
 
@@ -144,19 +147,22 @@ async function api(path, method='GET', body, token){
 
 // ---------- Design tokens ----------
 const palette = {
-  background: '#f4f6f8',
-  surface: '#ffffff',
-  surfaceMuted: '#f1f5f9',
-  border: '#e2e8f0',
-  text: '#0f172a',
-  muted: '#5f6b7d',
-  primary: '#2c8a7d',
-  primaryStrong: '#1f6a60',
-  success: '#219653',
-  warning: '#f59e0b',
-  danger: '#d14343',
-  info: '#2563eb',
+  background: '#F1F5F9',
+  surface: '#FFFFFF',
+  surfaceMuted: '#E2E8F0',
+  border: '#CBD5E1',
+  text: '#0F172A',
+  muted: '#475569',
+  primary: '#10B981',
+  primaryStrong: '#047857',
+  success: '#10B981',
+  warning: '#FACC15',
+  danger: '#EF4444',
+  info: '#0EA5E9',
+  ink: '#0F172A',
 };
+
+const defaultTagSeeds = ['Urgent', 'Follow-up', 'Inspection', 'Warranty', 'Priority', 'Safety', 'Internal'];
 
 const spacing = (step = 1) => step * 8;
 
@@ -167,37 +173,48 @@ const typography = {
   small: 12,
 };
 
+const lineHeightFor = (fontSize) => Math.round(fontSize * 1.5);
+const defaultLineHeight = lineHeightFor(typography.body);
+if (!Text.defaultProps) Text.defaultProps = {};
+Text.defaultProps.style = {
+  ...(Text.defaultProps.style || {}),
+  lineHeight: defaultLineHeight,
+  fontFamily: Platform.select({ ios: 'Inter', android: 'Inter', default: 'Inter' }),
+  color: palette.text,
+};
+
 const floatingShadow = Platform.select({
-  ios: { shadowColor: '#0f172a', shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+  ios: { shadowColor: palette.ink, shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
   android: { elevation: 2 },
   default: {},
 });
 
 const pillTone = {
-  NEW: { fg: palette.info, bg: '#e6eeff', label: 'New' },
-  CONTACTED: { fg: palette.primary, bg: '#e6f4f2', label: 'Contacted' },
-  ESTIMATING: { fg: palette.warning, bg: '#fdf1d6', label: 'Estimating' },
-  CONVERTED: { fg: palette.success, bg: '#e6f6ec', label: 'Converted' },
-  CLOSED_LOST: { fg: palette.muted, bg: '#e2e8f0', label: 'Lost' },
-  SCHEDULED: { fg: palette.primary, bg: '#e6f4f2', label: 'Scheduled' },
-  IN_PROGRESS: { fg: palette.info, bg: '#e6eeff', label: 'In progress' },
-  COMPLETE: { fg: palette.success, bg: '#e6f6ec', label: 'Complete' },
-  DONE: { fg: palette.success, bg: '#e6f6ec', label: 'Complete' },
-  ON_HOLD: { fg: palette.warning, bg: '#fdf1d6', label: 'On hold' },
-  CANCELLED: { fg: palette.muted, bg: '#e2e8f0', label: 'Cancelled' },
-  DRAFT: { fg: palette.muted, bg: '#e2e8f0', label: 'Draft' },
-  SENT: { fg: palette.info, bg: '#e6eeff', label: 'Sent' },
-  PART_PAID: { fg: palette.warning, bg: '#fdf1d6', label: 'Part paid' },
-  PAID: { fg: palette.success, bg: '#e6f6ec', label: 'Paid' },
-  VOID: { fg: palette.muted, bg: '#f1f5f9', label: 'Void' },
+  NEW: { fg: palette.info, bg: '#E0F2FE', label: 'New' },
+  CONTACTED: { fg: palette.primaryStrong, bg: '#DCFCE7', label: 'Contacted' },
+  ESTIMATING: { fg: '#92400E', bg: '#FEF3C7', label: 'Estimating' },
+  CONVERTED: { fg: palette.success, bg: '#DCFCE7', label: 'Converted' },
+  CLOSED_LOST: { fg: palette.muted, bg: '#E2E8F0', label: 'Lost' },
+  SCHEDULED: { fg: palette.primaryStrong, bg: '#D1FAE5', label: 'Scheduled' },
+  IN_PROGRESS: { fg: palette.info, bg: '#E0F2FE', label: 'In progress' },
+  COMPLETED: { fg: palette.success, bg: '#DCFCE7', label: 'Completed' },
+  COMPLETE: { fg: palette.success, bg: '#DCFCE7', label: 'Complete' },
+  DONE: { fg: palette.success, bg: '#DCFCE7', label: 'Complete' },
+  ON_HOLD: { fg: '#92400E', bg: '#FEF3C7', label: 'On hold' },
+  CANCELLED: { fg: palette.muted, bg: '#E2E8F0', label: 'Cancelled' },
+  DRAFT: { fg: palette.muted, bg: '#E2E8F0', label: 'Draft' },
+  SENT: { fg: palette.info, bg: '#E0F2FE', label: 'Sent' },
+  PART_PAID: { fg: '#92400E', bg: '#FEF3C7', label: 'Part paid' },
+  PAID: { fg: palette.success, bg: '#DCFCE7', label: 'Paid' },
+  VOID: { fg: palette.muted, bg: '#F8FAFC', label: 'Void' },
 };
 
 const toneMap = {
-  primary: { fg: palette.primaryStrong, bg: '#e0f3f0' },
-  success: { fg: palette.success, bg: '#e6f6ec' },
-  warning: { fg: palette.warning, bg: '#fdf1d6' },
-  danger: { fg: palette.danger, bg: '#fde4e4' },
-  info: { fg: palette.info, bg: '#e6eeff' },
+  primary: { fg: palette.primaryStrong, bg: '#ECFDF5' },
+  success: { fg: palette.success, bg: '#DCFCE7' },
+  warning: { fg: '#92400E', bg: '#FEF3C7' },
+  danger: { fg: palette.danger, bg: '#FEE2E2' },
+  info: { fg: palette.info, bg: '#E0F2FE' },
 };
 
 const formInputBaseStyle = {
@@ -279,20 +296,174 @@ function SummaryCard({ title, value, subtitle, tone = 'primary', onPress }) {
       onPress={onPress}
       style={{ backgroundColor: colors.bg, borderColor: 'transparent', padding: spacing(2.5) }}
     >
-      <Text style={{ color: palette.muted, fontSize: typography.small, textTransform: 'uppercase', fontWeight: '700' }}>{title}</Text>
-      <Text style={{ color: colors.fg, fontSize: 28, fontWeight: '800', marginTop: spacing(0.5) }}>{value}</Text>
-      {subtitle ? <Text style={{ color: palette.muted, fontSize: typography.small, marginTop: spacing(0.5) }}>{subtitle}</Text> : null}
+      <Text style={{ color: palette.muted, fontSize: typography.small, textTransform: 'uppercase', fontWeight: '700', lineHeight: lineHeightFor(typography.small) }}>{title}</Text>
+      <Text style={{ color: colors.fg, fontSize: 28, fontWeight: '800', marginTop: spacing(0.5), lineHeight: lineHeightFor(28) }}>{value}</Text>
+      {subtitle ? <Text style={{ color: palette.muted, fontSize: typography.small, marginTop: spacing(0.5), lineHeight: lineHeightFor(typography.small) }}>{subtitle}</Text> : null}
     </SurfaceCard>
+  );
+}
+
+function StatusCard({ label, value, description, tone = 'primary' }) {
+  const colors = toneMap[tone] || toneMap.primary;
+  return (
+    <SurfaceCard
+      style={{
+        backgroundColor: colors.bg,
+        borderColor: 'transparent',
+        borderWidth: 1,
+        paddingVertical: spacing(2),
+        paddingHorizontal: spacing(2.5),
+        flexGrow: 1,
+        flexBasis: '48%',
+      }}
+    >
+      <Text style={{ color: colors.fg, fontSize: typography.small, fontWeight: '700', textTransform: 'uppercase', lineHeight: lineHeightFor(typography.small) }}>{label}</Text>
+      <Text style={{ color: palette.text, fontSize: 24, fontWeight: '700', marginTop: spacing(0.5), lineHeight: lineHeightFor(24) }}>{value}</Text>
+      {description ? <Text style={{ color: palette.muted, fontSize: typography.small, marginTop: spacing(0.5), lineHeight: lineHeightFor(typography.small) }}>{description}</Text> : null}
+    </SurfaceCard>
+  );
+}
+
+function TagInput({ value = [], onChange, placeholder = 'Add tag', suggestions = [] }) {
+  const [draft, setDraft] = useState('');
+  const [focused, setFocused] = useState(false);
+  const tags = useMemo(() => {
+    if (!Array.isArray(value)) return [];
+    return value.filter(Boolean).map(tag => String(tag));
+  }, [value]);
+  const cleanTag = useCallback((input) => {
+    if (!input) return null;
+    const cleaned = String(input).replace(/[#]/g, '').trim();
+    if (!cleaned) return null;
+    return cleaned.replace(/\s+/g, ' ');
+  }, []);
+  const handleChangeText = useCallback((text) => {
+    setDraft(text);
+    setFocused(true);
+  }, []);
+  const normalizedSuggestions = useMemo(() => {
+const library = new Set();
+    (Array.isArray(suggestions) ? suggestions : []).forEach(seed => {
+      const cleaned = cleanTag(seed);
+      if (cleaned) library.add(cleaned);
+    });
+    tags.forEach(tag => library.add(String(tag)));
+    return Array.from(library);
+  }, [suggestions, tags, cleanTag]);
+  const availableSuggestions = useMemo(
+    () =>
+      normalizedSuggestions.filter(
+        suggestion => !tags.some(tag => tag.toLowerCase() === suggestion.toLowerCase())
+      ),
+    [normalizedSuggestions, tags]
+  );
+  const filteredSuggestions = useMemo(() => {
+    const query = draft.trim().toLowerCase();
+    const results = query
+      ? availableSuggestions.filter(suggestion =>
+          suggestion.toLowerCase().includes(query)
+        )
+      : availableSuggestions;
+    return results.slice(0, 6);
+  }, [availableSuggestions, draft]);
+  const shouldShowSuggestions = focused && filteredSuggestions.length > 0;
+  const handleAdd = useCallback(() => {
+    const cleaned = cleanTag(draft);
+    if (!cleaned) return;
+    const exists = tags.some(existing => existing.toLowerCase() === cleaned.toLowerCase());
+    if (exists) {
+      setDraft('');
+      return;
+    }
+    onChange && onChange([...tags, cleaned]);
+    setDraft('');
+    setFocused(false);
+  }, [draft, tags, cleanTag, onChange]);
+  const handleSubmit = useCallback(() => {
+    handleAdd();
+  }, [handleAdd]);
+  const handleRemove = useCallback((tag) => {
+    const next = tags.filter(entry => entry !== tag);
+    onChange && onChange(next);
+  }, [tags, onChange]);
+  const handleSelectSuggestion = useCallback((tag) => {
+    const cleaned = cleanTag(tag);
+    if (!cleaned) return;
+    const exists = tags.some(existing => existing.toLowerCase() === cleaned.toLowerCase());
+    if (!exists) {
+      onChange && onChange([...tags, cleaned]);
+    }
+    setDraft('');
+    setFocused(false);
+  }, [tags, onChange, cleanTag]);
+  const handleBlur = useCallback(() => {
+    setTimeout(() => setFocused(false), 120);
+  }, []);
+  return (
+    <View>
+      {tags.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing(1), rowGap: spacing(1), marginBottom: spacing(1) }}>
+          {tags.map(tag => (
+            <TouchableOpacity
+              key={tag}
+              onPress={() => handleRemove(tag)}
+              activeOpacity={0.8}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#d9f2ed',
+                borderRadius: 999,
+                paddingHorizontal: spacing(1.5),
+                paddingVertical: spacing(0.5),
+              }}
+            >
+              <Text style={{ color: palette.primaryStrong, fontWeight: '600', fontSize: typography.small }}>{`#${tag}`}</Text>
+              <Text style={{ color: palette.primaryStrong, marginLeft: spacing(0.5), fontSize: typography.small }}>×</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: spacing(1) }}>
+        <TextInput
+          value={draft}
+          onChangeText={handleChangeText}
+          onSubmitEditing={handleSubmit}
+          placeholder={placeholder}
+          placeholderTextColor={palette.muted}
+          style={[formInputBaseStyle, { flex: 1, marginBottom: 0 }]}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onFocus={() => setFocused(true)}
+          onBlur={handleBlur}
+        />
+        <QuickAction label="Add" onPress={handleAdd} tone="primary" />
+      </View>
+      {shouldShowSuggestions ? (
+        <View style={{ marginTop: spacing(1), borderWidth: 1, borderColor: palette.border, borderRadius: 12, backgroundColor: palette.surface }}>
+          <Text style={{ color: palette.muted, fontSize: typography.small, fontWeight: '600', paddingHorizontal: spacing(1.5), paddingTop: spacing(1.25) }}>Suggestions</Text>
+          {filteredSuggestions.map(suggestion => (
+            <TouchableOpacity
+              key={suggestion}
+              onPress={() => handleSelectSuggestion(suggestion)}
+              activeOpacity={0.85}
+              style={{ paddingVertical: spacing(1.1), paddingHorizontal: spacing(1.5) }}
+            >
+              <Text style={{ color: palette.primaryStrong, fontWeight: '600' }}>{`#${suggestion}`}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
 function SectionHeader({ title, actionLabel, onAction }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing(1.5) }}>
-      <Text style={{ color: palette.text, fontSize: typography.h2, fontWeight: '700' }}>{title}</Text>
+      <Text style={{ color: palette.text, fontSize: typography.h2, fontWeight: '700', lineHeight: lineHeightFor(typography.h2) }}>{title}</Text>
       {actionLabel && onAction ? (
         <TouchableOpacity onPress={onAction} style={{ paddingHorizontal: spacing(1), paddingVertical: spacing(0.5) }}>
-          <Text style={{ color: palette.primary, fontWeight: '600', fontSize: typography.small }}>{actionLabel}</Text>
+          <Text style={{ color: palette.primary, fontWeight: '600', fontSize: typography.small, lineHeight: lineHeightFor(typography.small) }}>{actionLabel}</Text>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -303,15 +474,15 @@ function QuickAction({ label, onPress, tone = 'primary' }) {
   const toneStyles = (() => {
     switch (tone) {
       case 'danger':
-        return { borderColor: '#fecdd3', backgroundColor: '#fee2e2', textColor: palette.danger };
+        return { borderColor: '#FECACA', backgroundColor: '#FEE2E2', textColor: palette.danger };
       case 'success':
-        return { borderColor: '#bbf7d0', backgroundColor: '#dcfce7', textColor: palette.success };
+        return { borderColor: '#A7F3D0', backgroundColor: '#DCFCE7', textColor: palette.success };
       case 'warning':
-        return { borderColor: '#fde68a', backgroundColor: '#fef3c7', textColor: palette.warning };
+        return { borderColor: '#FDE68A', backgroundColor: '#FEF9C3', textColor: '#92400E' };
       case 'muted':
         return { borderColor: palette.border, backgroundColor: palette.surface, textColor: palette.muted };
       default:
-        return { borderColor: palette.border, backgroundColor: palette.surfaceMuted, textColor: palette.primary };
+        return { borderColor: palette.primary, backgroundColor: '#ECFDF5', textColor: palette.primaryStrong };
     }
   })();
   return (
@@ -327,7 +498,7 @@ function QuickAction({ label, onPress, tone = 'primary' }) {
         backgroundColor: toneStyles.backgroundColor,
       }}
     >
-      <Text style={{ color: toneStyles.textColor, fontWeight: '600', fontSize: typography.small }}>{label}</Text>
+      <Text style={{ color: toneStyles.textColor, fontWeight: '600', fontSize: typography.small, lineHeight: lineHeightFor(typography.small) }}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -503,7 +674,7 @@ function TechSelector({ team = [], value, onSelect, label, allowAllRoles, allowC
         {options.map(member => {
           const selected = member.id === value;
           const displayName = member.fullName || member.email;
-          const shortLabel = displayName.length > 22 ? `${displayName.slice(0, 21)}…` : displayName;
+          const shortLabel = displayName.length > 22 ? `${displayName.slice(0, 21)}...` : displayName;
           return (
             <QuickAction
               key={member.id}
@@ -520,7 +691,7 @@ function TechSelector({ team = [], value, onSelect, label, allowAllRoles, allowC
 }
 
 function DashboardScreen({ navigation }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [leads, setLeads] = useState([]);
@@ -528,6 +699,7 @@ function DashboardScreen({ navigation }) {
   const [tasks, setTasks] = useState([]);
   const [invoiceSummary, setInvoiceSummary] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const isAdmin = (user?.role || '').toUpperCase() === 'ADMIN';
 
   const jobLookup = useMemo(() => {
     const map = {};
@@ -546,10 +718,11 @@ function DashboardScreen({ navigation }) {
     const fetchLeads = async () => {
       try {
         const data = await api('/leads', 'GET', null, token);
-        setLeads(data);
+        const filtered = data.filter(item => (item.status || '').toUpperCase() !== 'CONVERTED');
+        setLeads(filtered);
         db.transaction(tx => {
           tx.executeSql && tx.executeSql('DELETE FROM leads_cache;');
-          data.forEach(l =>
+          filtered.forEach(l =>
             tx.executeSql && tx.executeSql(
               'INSERT OR REPLACE INTO leads_cache (id, description, status) VALUES (?,?,?)',
               [l.id, l.description || '', l.status || 'NEW']
@@ -564,7 +737,7 @@ function DashboardScreen({ navigation }) {
               'SELECT id, description, status FROM leads_cache',
               [],
               (_, { rows }) => {
-                const fallback = rows?._array || [];
+                const fallback = (rows?._array || []).filter(item => (item.status || '').toUpperCase() !== 'CONVERTED');
                 setLeads(fallback);
                 resolve(fallback);
               }
@@ -667,6 +840,94 @@ function DashboardScreen({ navigation }) {
   const outstandingValue = invoiceSummary?.outstanding || 0;
   const collectedValue = invoiceSummary?.collected || 0;
   const overdueCount = invoiceSummary?.overdueCount || 0;
+  const overdueTasks = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return tasks.filter(task => {
+      if (!task?.dueDate || isTaskCompleted(task.status)) return false;
+      const due = new Date(task.dueDate);
+      if (Number.isNaN(due.getTime())) return false;
+      return due < today;
+    }).length;
+  }, [tasks]);
+  const statusCards = useMemo(() => [
+    {
+      label: 'Active',
+      value: String(activeJobs),
+      description: 'Jobs in progress or scheduled',
+      tone: 'primary',
+    },
+    {
+      label: 'Pending',
+      value: formatCurrency(outstandingValue),
+      description: 'Unpaid invoices',
+      tone: 'warning',
+    },
+    {
+      label: 'Paid',
+      value: formatCurrency(collectedValue),
+      description: 'Collected to date',
+      tone: 'success',
+    },
+    {
+      label: 'Overdue',
+      value: String(overdueTasks),
+      description: `Tasks overdue; ${overdueCount} invoices late`,
+      tone: 'danger',
+    },
+  ], [activeJobs, outstandingValue, collectedValue, overdueTasks, overdueCount]);
+  const downloadReport = useCallback(async (format = 'csv') => {
+    const endpoint = format === 'quickbooks' ? '/invoices/export/quickbooks' : '/invoices/export/csv';
+    const filename = `precision-report-${Date.now()}.${format === 'quickbooks' ? 'iif' : 'csv'}`;
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const text = await response.text();
+      if (!response.ok) throw new Error(text || 'Unable to download report.');
+      const extension = format === 'quickbooks' ? 'iif' : 'csv';
+      const mimeType = format === 'quickbooks' ? 'text/plain' : 'text/csv';
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try {
+          const blob = new Blob([text], { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename;
+          anchor.click();
+          setTimeout(() => URL.revokeObjectURL(url), 4000);
+          Alert.alert('Download started', `Look for ${filename} in your browser downloads.`);
+        } catch (shareError) {
+          Alert.alert('Download ready', `Save this file manually: ${filename}`);
+        }
+        return;
+      }
+
+      if (!FileSystem?.cacheDirectory) throw new Error('Storage unavailable');
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(fileUri, text, { encoding: FileSystem.EncodingType.UTF8 });
+      const sharingSupported = Sharing?.isAvailableAsync ? await Sharing.isAvailableAsync() : false;
+      if (sharingSupported) {
+        await Sharing.shareAsync(fileUri, { mimeType, dialogTitle: filename });
+      } else {
+        try {
+          await Share.share({
+            message: `Precision Tracker report ready: ${filename}`,
+            url: fileUri,
+            title: filename,
+          });
+        } catch {
+          Alert.alert('Report saved', `File stored at ${fileUri}.`);
+          return;
+        }
+        Alert.alert('Report saved', `If you skipped sharing, find it at ${fileUri}.`);
+      }
+    } catch (error) {
+      Alert.alert('Download failed', error?.message || 'Unable to download report.');
+    }
+  }, [token]);
 
   const topLeads = leads.slice(0, 3);
   const topJobs = jobs.slice(0, 3);
@@ -678,44 +939,95 @@ function DashboardScreen({ navigation }) {
         contentContainerStyle={{ paddingHorizontal: spacing(2), paddingVertical: spacing(2), paddingBottom: spacing(5) }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
       >
-        <Text style={{ color: palette.text, fontSize: typography.h1, fontWeight: '700', marginBottom: spacing(2) }}>Dashboard</Text>
+        <View style={{ marginBottom: spacing(3) }}>
+          <View style={{ width: spacing(5), height: spacing(5), borderRadius: 14, backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center', marginBottom: spacing(1.5) }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: typography.h2 }}>PT</Text>
+          </View>
+          <Text style={{ color: palette.ink, fontSize: 30, fontWeight: '800', lineHeight: lineHeightFor(30) }}>Precision Tracker</Text>
+          <Text style={{ color: palette.muted, fontSize: typography.body, marginTop: spacing(0.5), lineHeight: lineHeightFor(typography.body) }}>
+            Built for crews who don’t miss details.
+          </Text>
+          <Text style={{ color: palette.muted, fontSize: typography.body, marginTop: spacing(0.5), lineHeight: lineHeightFor(typography.body) }}>
+            Stay on track, every job.
+          </Text>
+        </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          <View style={{ flexBasis: '48%', marginBottom: spacing(2) }}>
-            <SummaryCard
-              title="Leads"
-              value={leads.length}
-              subtitle={`${newLeads} new to triage`}
-              tone="info"
-              onPress={() => navigation.navigate('Leads')}
-            />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing(1.5), rowGap: spacing(1.5), marginBottom: spacing(3) }}>
+          <QuickAction label="New job" onPress={() => navigation.navigate('Jobs', { focus: 'create-job' })} />
+          <QuickAction label="New lead" onPress={() => navigation.navigate('NewLead')} />
+          {isAdmin ? (
+            <>
+              <QuickAction label="Create invoice" tone="success" onPress={() => navigation.navigate('Invoices')} />
+              <QuickAction tone="muted" label="Export CSV" onPress={() => downloadReport('csv')} />
+              <QuickAction tone="muted" label="QuickBooks export" onPress={() => downloadReport('quickbooks')} />
+            </>
+          ) : null}
+        </View>
+
+        <View style={{ marginBottom: spacing(3) }}>
+          <Text style={{ color: palette.muted, fontSize: typography.small, fontWeight: '600', marginBottom: spacing(0.5), lineHeight: lineHeightFor(typography.small) }}>
+            Executive pulse
+          </Text>
+          <Text style={{ color: palette.muted, fontSize: typography.body, marginBottom: spacing(1.5), lineHeight: lineHeightFor(typography.body) }}>
+            Know what’s running smoothly and what needs attention before wheels come off.
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing(1.5), rowGap: spacing(1.5) }}>
+            {statusCards.map(card => (
+              <StatusCard
+                key={card.label}
+                label={card.label}
+                value={card.value}
+                description={card.description}
+                tone={card.tone}
+              />
+            ))}
           </View>
-          <View style={{ flexBasis: '48%', marginBottom: spacing(2) }}>
-            <SummaryCard
-              title="Jobs"
-              value={jobs.length}
-              subtitle={`${activeJobs} active`}
-              tone="primary"
-              onPress={() => navigation.navigate('Jobs')}
-            />
-          </View>
-          <View style={{ flexBasis: '48%', marginBottom: spacing(2) }}>
-            <SummaryCard
-              title="Tasks"
-              value={openTasks}
-              subtitle={`Open of ${tasks.length}`}
-              tone="warning"
-              onPress={() => navigation.navigate('Jobs')}
-            />
-          </View>
-          <View style={{ flexBasis: '48%', marginBottom: spacing(2) }}>
-            <SummaryCard
-              title="Invoices"
-              value={formatCurrency(outstandingValue)}
-              subtitle={`${overdueCount} overdue | ${formatCurrency(collectedValue)} collected`}
-              tone="success"
-              onPress={() => navigation.navigate('Invoices')}
-            />
+        </View>
+
+        <View style={{ marginBottom: spacing(3) }}>
+          <Text style={{ color: palette.muted, fontSize: typography.small, fontWeight: '600', marginBottom: spacing(0.5), lineHeight: lineHeightFor(typography.small) }}>
+            Pipeline snapshot
+          </Text>
+          <Text style={{ color: palette.muted, fontSize: typography.body, marginBottom: spacing(1.5), lineHeight: lineHeightFor(typography.body) }}>
+            Stay ahead of demand by keeping leads, jobs, tasks, and invoices moving.
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing(1.5), rowGap: spacing(1.5) }}>
+            <View style={{ flexBasis: '48%', minWidth: 160 }}>
+              <SummaryCard
+                title="Leads"
+                value={leads.length}
+                subtitle={`${newLeads} new to triage`}
+                tone="info"
+                onPress={() => navigation.navigate('Leads')}
+              />
+            </View>
+            <View style={{ flexBasis: '48%', minWidth: 160 }}>
+              <SummaryCard
+                title="Jobs"
+                value={jobs.length}
+                subtitle={`${activeJobs} active`}
+                tone="primary"
+                onPress={() => navigation.navigate('Jobs')}
+              />
+            </View>
+            <View style={{ flexBasis: '48%', minWidth: 160 }}>
+              <SummaryCard
+                title="Tasks"
+                value={openTasks}
+                subtitle={`${overdueTasks} overdue • ${tasks.length} total`}
+                tone="warning"
+                onPress={() => navigation.navigate('Jobs')}
+              />
+            </View>
+            <View style={{ flexBasis: '48%', minWidth: 160 }}>
+              <SummaryCard
+                title="Invoices"
+                value={formatCurrency(outstandingValue)}
+                subtitle={`${overdueCount} overdue | ${formatCurrency(collectedValue)} collected`}
+                tone="success"
+                onPress={() => navigation.navigate('Invoices')}
+              />
+            </View>
           </View>
         </View>
 
@@ -774,7 +1086,7 @@ function DashboardScreen({ navigation }) {
               </Text>
                 <View style={{ flexDirection: 'row', columnGap: spacing(1.5), marginTop: spacing(1.5) }}>
                   <QuickAction label="Follow up" onPress={() => navigation.navigate('EstimateEditor', { leadId: lead.id })} />
-                  <QuickAction label="Convert" onPress={() => navigation.navigate('Jobs')} />
+                  <QuickAction label="Open lead" tone="muted" onPress={() => navigation.navigate('Leads')} />
                 </View>
               </View>
             ))
@@ -864,7 +1176,13 @@ ${(resp && resp.paymentLink) ? resp.paymentLink : 'Unavailable'}`); navigation.g
       <Text style={{ fontSize:18, marginBottom:8 }}>Sign Estimate #{estimateId}</Text>
       <SignaturePad onCapturePng={setSigPng} />
       <View style={{ height:12 }} />
-      <Button title="Save Signature" onPress={save} />
+      <TouchableOpacity
+        onPress={save}
+        activeOpacity={0.85}
+        style={{ backgroundColor: palette.primary, paddingVertical: spacing(1.5), borderRadius: 12, alignItems: 'center' }}
+      >
+        <Text style={{ color:'#FFFFFF', fontWeight:'700' }}>Save signature</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -920,9 +1238,23 @@ function UsersAdminScreen(){
     }
     try {
       setInviting(true);
-      await api('/users','POST', { email: trimmedEmail, fullName: trimmedName || undefined, role: normalizeRole(role) }, token);
+      const result = await api('/users','POST', { email: trimmedEmail, fullName: trimmedName || undefined, role: normalizeRole(role) }, token);
       resetForm();
       await load();
+      const inviteInfo = result?.invitation;
+      const tempPassword = result?.temporaryPassword;
+      if (inviteInfo?.sent) {
+        Alert.alert('Invite sent', `${trimmedEmail} will receive login instructions shortly.`);
+      } else if (inviteInfo?.mock) {
+        Alert.alert(
+          'Invite ready',
+          `Email delivery is disabled in this environment. Share this temporary password: ${tempPassword || 'Set via admin'}.`
+        );
+      } else if (tempPassword) {
+        Alert.alert('Invite created', `Share this temporary password with ${trimmedEmail}: ${tempPassword}`);
+      } else {
+        Alert.alert('Invite created', `${trimmedEmail} is ready to sign in.`);
+      }
     } catch (e) {
       Alert.alert('Error', e.message || 'Unable to send invite.');
     } finally {
@@ -942,18 +1274,19 @@ function UsersAdminScreen(){
   const remove = (id) => {
     Alert.alert('Remove user', 'Are you sure you want to remove this person?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api(`/users/${id}`,'DELETE',null,token);
-            await load();
-          } catch (e) {
-            Alert.alert('Error', e.message || 'Unable to delete user.');
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api(`/users/${id}`,'DELETE',null,token);
+              await load();
+              Alert.alert('Removed', 'User access revoked.');
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Unable to delete user.');
+            }
           }
         }
-      }
     ]);
   };
 
@@ -1172,6 +1505,159 @@ function InvoicesScreen({ navigation }){
     const next = maxNumber + 1;
     return `INV-${String(next).padStart(4, '0')}`;
   }, [invoices]);
+  const downloadReport = useCallback(async (format = 'csv') => {
+    const endpoint = format === 'quickbooks' ? '/invoices/export/quickbooks' : '/invoices/export/csv';
+    const filename = `precision-report-${Date.now()}.${format === 'quickbooks' ? 'iif' : 'csv'}`;
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const text = await response.text();
+      if (!response.ok) throw new Error(text || 'Unable to download report.');
+      const extension = format === 'quickbooks' ? 'iif' : 'csv';
+      const mimeType = format === 'quickbooks' ? 'text/plain' : 'text/csv';
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try {
+          const blob = new Blob([text], { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename;
+          anchor.click();
+          setTimeout(() => URL.revokeObjectURL(url), 4000);
+          Alert.alert('Download started', `Look for ${filename} in your browser downloads.`);
+        } catch (shareError) {
+          Alert.alert('Download ready', `Save this file manually: ${filename}`);
+        }
+        return;
+      }
+
+      if (!FileSystem?.cacheDirectory) throw new Error('Storage unavailable');
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(fileUri, text, { encoding: FileSystem.EncodingType.UTF8 });
+      const sharingSupported = Sharing?.isAvailableAsync ? await Sharing.isAvailableAsync() : false;
+      if (sharingSupported) {
+        await Sharing.shareAsync(fileUri, { mimeType, dialogTitle: filename });
+      } else {
+        try {
+          await Share.share({
+            message: `Precision Tracker report ready: ${filename}`,
+            url: fileUri,
+            title: filename,
+          });
+        } catch {
+          Alert.alert('Report saved', `File stored at ${fileUri}.`);
+          return;
+        }
+        Alert.alert('Report saved', `If you skipped sharing, find it at ${fileUri}.`);
+      }
+    } catch (error) {
+      Alert.alert('Download failed', error?.message || 'Unable to download report.');
+    }
+  }, [token]);
+  const prepareInvoicePdf = useCallback(async (invoiceId) => {
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+    const endpoint = `${API_URL}/pdf/invoice/${invoiceId}`;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const response = await fetch(endpoint, { method: 'GET', headers });
+      const ok = response.ok;
+      const blob = await response.blob();
+      if (!ok) throw new Error('Unable to download invoice PDF.');
+      const url = URL.createObjectURL(blob);
+      return {
+        uri: url,
+        cleanup: () => setTimeout(() => URL.revokeObjectURL(url), 4000),
+      };
+    }
+
+    if (!FileSystem?.cacheDirectory) throw new Error('Storage unavailable');
+    const targetPath = `${FileSystem.cacheDirectory}invoice-${invoiceId}-${Date.now()}.pdf`;
+
+    if (typeof FileSystem.downloadAsync === 'function') {
+      const result = await FileSystem.downloadAsync(endpoint, targetPath, { headers });
+      if (result?.status && result.status >= 400) {
+        throw new Error('Unable to download invoice PDF.');
+      }
+      return {
+        uri: result.uri,
+        cleanup: () => {},
+      };
+    }
+
+    const response = await fetch(endpoint, { method: 'GET', headers });
+    const buffer = await response.arrayBuffer();
+    if (!response.ok) throw new Error('Unable to download invoice PDF.');
+    const base64 = Buffer.from(buffer).toString('base64');
+    await FileSystem.writeAsStringAsync(targetPath, base64, { encoding: FileSystem.EncodingType.Base64 });
+    return {
+      uri: targetPath,
+      cleanup: () => {},
+    };
+  }, [token]);
+
+  const shareInvoicePdf = useCallback(async (invoice) => {
+    try {
+      const payload = await prepareInvoicePdf(invoice.id);
+      try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.open(payload.uri, '_blank', 'noopener,noreferrer');
+          Alert.alert('PDF opened', 'A new browser tab should display the invoice.');
+        } else {
+          const sharingSupported = Sharing?.isAvailableAsync ? await Sharing.isAvailableAsync() : false;
+          if (sharingSupported) {
+            await Sharing.shareAsync(payload.uri, {
+              mimeType: 'application/pdf',
+              dialogTitle: `Invoice ${invoice.number || invoice.id}`,
+            });
+          } else {
+            try {
+              await Share.share({
+                title: `Invoice ${invoice.number || invoice.id}`,
+                message: `Invoice ${invoice.number || invoice.id} ready.`,
+                url: payload.uri,
+              });
+            } catch {
+              Alert.alert('PDF saved', `Invoice stored at ${payload.uri}.`);
+            }
+          }
+        }
+      } finally {
+        payload.cleanup?.();
+      }
+    } catch (error) {
+      Alert.alert('PDF unavailable', error?.message || 'Unable to prepare invoice PDF.');
+    }
+  }, [prepareInvoicePdf]);
+
+  const printInvoicePdf = useCallback(async (invoice) => {
+    try {
+      const payload = await prepareInvoicePdf(invoice.id);
+      try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          const printWindow = window.open(payload.uri, '_blank', 'noopener,noreferrer');
+          if (printWindow) {
+            printWindow.onload = () => {
+              printWindow.focus();
+              printWindow.print();
+            };
+          } else {
+            Alert.alert('Print blocked', 'Allow pop-ups to print this invoice.');
+          }
+        } else if (Print?.printAsync) {
+          await Print.printAsync({ uri: payload.uri });
+        } else {
+          Alert.alert('Print unavailable', 'Printing is not supported in this environment.');
+        }
+      } finally {
+        payload.cleanup?.();
+      }
+    } catch (error) {
+      Alert.alert('Print failed', error?.message || 'Unable to send invoice to printer.');
+    }
+  }, [prepareInvoicePdf]);
 
   const resetInvoiceForm = useCallback(() => {
     setNewInvoiceJobId('');
@@ -1227,18 +1713,19 @@ function InvoicesScreen({ navigation }){
   const deleteInvoice = useCallback((invoice) => {
     Alert.alert('Delete invoice', `Delete invoice #${invoice.number || invoice.id}?`, [
       { text:'Cancel', style:'cancel' },
-      {
-        text:'Delete',
-        style:'destructive',
-        onPress: async () => {
-          try {
-            await api(`/invoices/${invoice.id}`, 'DELETE', null, token);
-            await load(false);
-          } catch (e) {
-            Alert.alert('Error', e.message || 'Unable to delete invoice.');
+        {
+          text:'Delete',
+          style:'destructive',
+          onPress: async () => {
+            try {
+              await api(`/invoices/${invoice.id}`, 'DELETE', null, token);
+              await load(false);
+              Alert.alert('Deleted', 'Invoice removed.');
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Unable to delete invoice.');
+            }
           }
         }
-      }
     ]);
   }, [token, load]);
 
@@ -1275,6 +1762,10 @@ function InvoicesScreen({ navigation }){
       >
         <Text style={{ color: palette.text, fontSize: typography.h1, fontWeight:'700', marginBottom: spacing(2) }}>Invoices</Text>
         <Text style={{ color: palette.muted, marginBottom: spacing(2) }}>Track billing health and spot overdue balances.</Text>
+        <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginBottom: spacing(2) }}>
+          <QuickAction tone="muted" label="Export CSV" onPress={() => downloadReport('csv')} />
+          <QuickAction tone="muted" label="QuickBooks export" onPress={() => downloadReport('quickbooks')} />
+        </View>
         <SurfaceCard style={{ padding: spacing(2.5), marginBottom: spacing(3) }}>
           <Text style={{ color: palette.text, fontSize: typography.h2, fontWeight:'700' }}>Create invoice</Text>
           <Text style={{ color: palette.muted, marginTop: spacing(0.5), marginBottom: spacing(2) }}>
@@ -1425,6 +1916,8 @@ function InvoicesScreen({ navigation }){
                   <Text style={{ color: palette.muted, marginTop: spacing(1) }}>Due {formatDate(inv.dueAt)}</Text>
                 ) : null}
                 <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(2) }}>
+                  <QuickAction tone="muted" label="Share PDF" onPress={() => shareInvoicePdf(inv)} />
+                  <QuickAction tone="muted" label="Print" onPress={() => printInvoicePdf(inv)} />
                   {inv.jobId ? <QuickAction label="View job" onPress={() => navigation.navigate('JobDetail', { jobId: inv.jobId })} tone="muted" /> : null}
                   <QuickAction label="Record payment" tone="success" onPress={() => Alert.alert('Coming soon', 'Payment logging will land shortly.')} />
                   <QuickAction label="Delete" tone="danger" onPress={() => deleteInvoice(inv)} />
@@ -1437,7 +1930,7 @@ function InvoicesScreen({ navigation }){
     </SafeAreaView>
   );
 }
-function JobsKanbanScreen({ navigation }){
+function JobsKanbanScreen({ navigation, route }){
   const { token } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1455,7 +1948,19 @@ function JobsKanbanScreen({ navigation }){
   const [newStateCode, setNewStateCode] = useState('');
   const [newZip, setNewZip] = useState('');
   const [jobFormTab, setJobFormTab] = useState('BASICS');
-  const statusOrder = ['SCHEDULED','IN_PROGRESS','ON_HOLD','DONE','COMPLETE','CANCELLED'];
+  const [newJobTags, setNewJobTags] = useState([]);
+  const statusOrder = ['NEW','SCHEDULED','IN_PROGRESS','ON_HOLD','COMPLETED','DONE','PAID','CANCELLED','CLOSED'];
+  const scrollRef = useRef(null);
+  const [selectedTag, setSelectedTag] = useState(null);
+  const [selectedCity, setSelectedCity] = useState(null);
+  const [selectedUrgency, setSelectedUrgency] = useState('ALL');
+  const jobTagSuggestions = useMemo(() => {
+    const library = new Set(defaultTagSeeds);
+    jobs.forEach(job => {
+      (Array.isArray(job.tags) ? job.tags : []).forEach(tag => library.add(String(tag)));
+    });
+    return Array.from(library);
+  }, [jobs]);
 
   const load = useCallback(async (isRefresh = false) => {
     isRefresh ? setRefreshing(true) : setLoading(true);
@@ -1487,6 +1992,72 @@ function JobsKanbanScreen({ navigation }){
       load(false);
     }, [load])
   );
+  useEffect(() => {
+    if (route?.params?.focus === 'create-job') {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      setJobFormTab('BASICS');
+      if (navigation && typeof navigation.setParams === 'function') {
+        navigation.setParams({ focus: undefined });
+      }
+    }
+  }, [route?.params?.focus, navigation]);
+  const availableTags = useMemo(() => {
+    const set = new Set();
+    jobs.forEach(job => {
+      const tags = Array.isArray(job.tags) ? job.tags : [];
+      tags.forEach(tag => {
+        if (tag) set.add(String(tag));
+      });
+    });
+    return Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }, [jobs]);
+  const availableCities = useMemo(() => {
+    const set = new Set();
+    jobs.forEach(job => {
+      const city = job?.Jobsite?.city;
+      if (city) set.add(String(city).trim());
+    });
+    return Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }, [jobs]);
+  const urgencyFilters = useMemo(() => ([
+    { key: 'ALL', label: 'All' },
+    { key: 'UPCOMING', label: 'Starting soon' },
+    { key: 'OVERDUE', label: 'Past due' },
+  ]), []);
+  const filteredJobsRaw = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return jobs.filter(job => {
+      if (selectedTag) {
+        const tags = Array.isArray(job.tags) ? job.tags : [];
+        const hasTag = tags.some(tag => String(tag).toLowerCase() === selectedTag.toLowerCase());
+        if (!hasTag) return false;
+      }
+      if (selectedCity) {
+        const city = job?.Jobsite?.city ? String(job.Jobsite.city) : '';
+        if (city.toLowerCase() !== selectedCity.toLowerCase()) return false;
+      }
+      if (selectedUrgency === 'UPCOMING') {
+        if (!job.startDate) return false;
+        const start = new Date(job.startDate);
+        if (Number.isNaN(start.getTime())) return false;
+        const diff = Math.ceil((start - today) / (1000 * 60 * 60 * 24));
+        if (diff < 0 || diff > 3) return false;
+      } else if (selectedUrgency === 'OVERDUE') {
+        if (!job.endDate) return false;
+        const due = new Date(job.endDate);
+        if (Number.isNaN(due.getTime())) return false;
+        if (due >= today) return false;
+      }
+      return true;
+    });
+  }, [jobs, selectedTag, selectedCity, selectedUrgency]);
+  const hasFilters = useMemo(() => Boolean(selectedTag || selectedCity || selectedUrgency !== 'ALL'), [selectedTag, selectedCity, selectedUrgency]);
+  const clearFilters = useCallback(() => {
+    setSelectedTag(null);
+    setSelectedCity(null);
+    setSelectedUrgency('ALL');
+  }, []);
 
   const onRefresh = useCallback(() => load(true), [load]);
 
@@ -1503,6 +2074,7 @@ function JobsKanbanScreen({ navigation }){
     setNewCity('');
     setNewStateCode('');
     setNewZip('');
+    setNewJobTags([]);
     setJobFormTab('BASICS');
   };
 
@@ -1516,10 +2088,11 @@ function JobsKanbanScreen({ navigation }){
     const hasAddress = [newAddressLine1, newCity, newStateCode, newZip].some(v => v && v.trim());
     const payload = {
       name: newJobName.trim(),
-      status: 'SCHEDULED',
+      status: 'NEW',
       startDate: newJobStartDate || null,
       endDate: newJobDueDate || null,
       notes: newJobNotes.trim() || null,
+      tags: newJobTags.filter(Boolean),
     };
     if (hasCustomer) {
       payload.customer = {
@@ -1567,20 +2140,22 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
     }
   };
 
-  const removeJob = async (id) => {
+  const removeJob = useCallback((id) => {
     Alert.alert('Delete Job', `Delete job #${id}?`, [
       { text:'Cancel', style:'cancel' },
       { text:'Delete', style:'destructive', onPress: async () => {
         try {
           await api(`/jobs/${id}`,'DELETE',null,token);
-          setJobs(prev => prev.filter(job => job.id !== id));
+          setJobs(prev => prev.filter(job => Number(job.id) !== Number(id)));
           db.transaction(tx => tx.executeSql && tx.executeSql('DELETE FROM jobs_cache WHERE id=?', [id]));
+          Alert.alert('Deleted', 'Job removed.');
+          await load(false);
         } catch(e) {
           Alert.alert('Error', e.message || 'Unable to delete job');
         }
       } }
     ]);
-  };
+  }, [token, load]);
 
   const sortedJobs = useMemo(() => {
     const normalize = (status) => (status || 'SCHEDULED').toUpperCase();
@@ -1594,7 +2169,7 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
       const d = new Date(value);
       return Number.isNaN(d.getTime()) ? null : d;
     };
-    return [...jobs].sort((a, b) => {
+    return [...filteredJobsRaw].sort((a, b) => {
       const statusDiff = rank(a.status) - rank(b.status);
       if (statusDiff !== 0) return statusDiff;
       const startA = parseDateSafe(a.startDate);
@@ -1604,7 +2179,7 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
       if (startB) return 1;
       return (b.id || 0) - (a.id || 0);
     });
-  }, [jobs, statusOrder]);
+  }, [filteredJobsRaw, statusOrder]);
 
   const groupedJobs = useMemo(() => {
     const groups = [];
@@ -1628,8 +2203,9 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
 
   const quickStatusActions = [
     { label:'Start job', value:'IN_PROGRESS', tone:'primary' },
+    { label:'Mark completed', value:'COMPLETED', tone:'success' },
+    { label:'Mark paid', value:'PAID', tone:'success' },
     { label:'Pause', value:'ON_HOLD', tone:'warning' },
-    { label:'Wrap up', value:'DONE', tone:'success' },
   ];
 
   const inputStyle = {
@@ -1672,6 +2248,9 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
             onChange={setNewJobDueDate}
             placeholder="Due date"
           />
+          <View style={{ marginTop: spacing(1.5) }}>
+            <TagInput value={newJobTags} onChange={setNewJobTags} placeholder="Add tags (e.g. HVAC, Urgent)" suggestions={jobTagSuggestions} />
+          </View>
         </View>
       );
     }
@@ -1769,6 +2348,7 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
   return (
     <SafeAreaView style={{ flex:1, backgroundColor: palette.background }}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ paddingHorizontal: spacing(2), paddingVertical: spacing(2), paddingBottom: spacing(4) }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} />}
       >
@@ -1811,6 +2391,56 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
           </View>
         </SurfaceCard>
 
+        <SurfaceCard style={{ marginBottom: spacing(3), padding: spacing(2.5) }}>
+          <Text style={{ color: palette.text, fontSize: typography.h2, fontWeight:'700', marginBottom: spacing(1.5) }}>Filters</Text>
+          <Text style={{ color: palette.muted, marginBottom: spacing(1) }}>Urgency</Text>
+          <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginBottom: spacing(1.5) }}>
+            {urgencyFilters.map(option => (
+              <QuickAction
+                key={option.key}
+                label={option.label}
+                tone={selectedUrgency === option.key ? 'primary' : 'muted'}
+                onPress={() => setSelectedUrgency(option.key)}
+              />
+            ))}
+          </View>
+          {availableTags.length ? (
+            <View style={{ marginBottom: spacing(1.5) }}>
+              <Text style={{ color: palette.muted, marginBottom: spacing(1) }}>Tags</Text>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1) }}>
+                {availableTags.map(tag => (
+                  <QuickAction
+                    key={tag}
+                    label={`#${tag}`}
+                    tone={selectedTag === tag ? 'primary' : 'muted'}
+                    onPress={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
+          {availableCities.length ? (
+            <View>
+              <Text style={{ color: palette.muted, marginBottom: spacing(1) }}>Location</Text>
+              <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1) }}>
+                {availableCities.map(city => (
+                  <QuickAction
+                    key={city}
+                    label={city}
+                    tone={selectedCity === city ? 'primary' : 'muted'}
+                    onPress={() => setSelectedCity(selectedCity === city ? null : city)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
+          {(selectedTag || selectedCity || selectedUrgency !== 'ALL') ? (
+            <View style={{ marginTop: spacing(2) }}>
+              <QuickAction label="Clear filters" tone="muted" onPress={clearFilters} />
+            </View>
+          ) : null}
+        </SurfaceCard>
+
         {loading && !refreshing && jobs.length === 0 ? (
           <SurfaceCard style={{ alignItems:'center', paddingVertical: spacing(6), marginBottom: spacing(3) }}>
             <ActivityIndicator color={palette.primary} />
@@ -1820,7 +2450,9 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
 
         {groupedJobs.length === 0 ? (
           <SurfaceCard>
-            <Text style={{ color: palette.muted }}>No jobs yet. Convert a lead or add a job to get started.</Text>
+            <Text style={{ color: palette.muted }}>
+              {hasFilters ? 'No jobs match the current filters.' : 'No jobs yet. Convert a lead or add a job to get started.'}
+            </Text>
           </SurfaceCard>
         ) : (
           groupedJobs.map(group => (
@@ -1839,6 +2471,7 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
                 ].filter(Boolean);
                 const address = addressParts.join(', ');
                 const statusKey = (job.status || 'SCHEDULED').toUpperCase();
+                const assignedTech = job.assignedTech;
                 return (
                   <SurfaceCard key={job.id} style={{ marginBottom: spacing(1.5) }}>
                     <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
@@ -1854,8 +2487,26 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
                     {customer.phone ? <Text style={{ color: palette.muted }}>{customer.phone}</Text> : null}
                     {customer.email ? <Text style={{ color: palette.muted }}>{customer.email}</Text> : null}
                     {address ? <Text style={{ color: palette.muted, marginTop: spacing(1) }}>{address}</Text> : null}
+                    {assignedTech ? (
+                      <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>
+                        Assigned to {assignedTech.fullName || assignedTech.email || 'Tech'}
+                      </Text>
+                    ) : null}
                     {job.notes ? <Text style={{ color: palette.muted, marginTop: spacing(1) }} numberOfLines={3}>{job.notes}</Text> : null}
+                    {Array.isArray(job.tags) && job.tags.length ? (
+                      <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(1) }}>
+                        {job.tags.map(tag => (
+                          <View
+                            key={`${job.id}-${tag}`}
+                            style={{ backgroundColor: '#e0f3f0', borderRadius: 999, paddingHorizontal: spacing(1.5), paddingVertical: spacing(0.5) }}
+                          >
+                            <Text style={{ color: palette.primaryStrong, fontWeight:'600', fontSize: typography.small }}>{`#${tag}`}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                     <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(2) }}>
+                      {address ? <QuickAction label="Map" tone="muted" onPress={() => openJobInMaps(job)} /> : null}
                       <QuickAction label="View job" onPress={() => navigation.navigate('JobDetail', { jobId: job.id })} tone="muted" />
                       {quickStatusActions.map(action => (
                         action.value === statusKey ? null : (
@@ -1894,11 +2545,24 @@ function JobDetailScreen({ route, navigation }){
   const [jobCity, setJobCity] = useState('');
   const [jobStateCode, setJobStateCode] = useState('');
   const [jobZip, setJobZip] = useState('');
+  const [jobTags, setJobTags] = useState([]);
+  const [assignedTechId, setAssignedTechId] = useState(null);
+  const [team, setTeam] = useState([]);
+  const [assignedTechName, setAssignedTechName] = useState('');
+  const [assigningTech, setAssigningTech] = useState(false);
+  const [jobAttachments, setJobAttachments] = useState([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [jobActivity, setJobActivity] = useState([]);
+  const [newActivityNote, setNewActivityNote] = useState('');
+  const [addingActivity, setAddingActivity] = useState(false);
   const [changeOrders, setCO] = useState([]);
   const [title, setTitle] = useState('');
   const [amountDelta, setAmountDelta] = useState('0');
+  const [tagSuggestions, setTagSuggestions] = useState(defaultTagSeeds);
   const roleKey = normalizeRole(user?.role);
   const canManageChangeOrders = ['ADMIN','SUPERVISOR','ESTIMATOR'].includes(roleKey);
+  const canAssignTech = roleKey === 'ADMIN';
   const loadCO = useCallback(async () => {
     setCO(await api(`/change-orders/job/${jobId}`,'GET',null,token));
   }, [jobId, token]);
@@ -1919,9 +2583,54 @@ function JobDetailScreen({ route, navigation }){
       setJobCity(jobsite.city || '');
       setJobStateCode(jobsite.state || '');
       setJobZip(jobsite.zip || '');
+      setJobTags(Array.isArray(j.tags) ? j.tags : []);
+      setJobActivity(Array.isArray(j.activityLog) ? j.activityLog : []);
+      setAssignedTechId(j.assignedTo ?? j.assignedTech?.id ?? null);
+      const techLabel = j.assignedTech ? (j.assignedTech.fullName || j.assignedTech.email || `Tech #${j.assignedTech.id}`) : '';
+      setAssignedTechName(techLabel);
     } catch(e) { }
   }, [jobId, token]);
-  useEffect(()=>{ loadJob(); loadCO(); },[loadJob, loadCO]);
+  const loadTeam = useCallback(async () => {
+    if (!canAssignTech) return;
+    try {
+      const data = await api('/users','GET',null,token);
+      setTeam(Array.isArray(data) ? data.filter(member => member.active !== false) : []);
+    } catch (e) {
+      // ignore; admin-only feature
+    }
+  }, [canAssignTech, token]);
+const loadAttachments = useCallback(async () => {
+  try {
+    setLoadingAttachments(true);
+    const response = await api(`/attachments?entityType=JOB&entityId=${jobId}`,'GET',null,token);
+    setJobAttachments(Array.isArray(response) ? response : []);
+  } catch (e) {
+    // ignore best effort offline
+  } finally {
+    setLoadingAttachments(false);
+  }
+}, [jobId, token]);
+const loadTagLibrary = useCallback(async () => {
+  try {
+    const [jobsData, leadsData] = await Promise.all([
+      api('/jobs','GET',null,token),
+      api('/leads','GET',null,token),
+    ]);
+    const library = new Set(defaultTagSeeds);
+    if (Array.isArray(jobsData)) {
+      jobsData.forEach(job => {
+        (Array.isArray(job.tags) ? job.tags : []).forEach(tag => library.add(String(tag)));
+      });
+    }
+    if (Array.isArray(leadsData)) {
+      leadsData.forEach(lead => {
+        (Array.isArray(lead.tags) ? lead.tags : []).forEach(tag => library.add(String(tag)));
+      });
+    }
+    setTagSuggestions(Array.from(library));
+  } catch {}
+}, [token]);
+useEffect(()=>{ loadJob(); loadCO(); loadAttachments(); loadTagLibrary(); if (canAssignTech) loadTeam(); },[loadJob, loadCO, loadAttachments, loadTagLibrary, loadTeam, canAssignTech]);
   const addCO = async ()=>{
     if(!title.trim()){
       Alert.alert('Missing info', 'Add a title for the change order.');
@@ -1937,6 +2646,8 @@ function JobDetailScreen({ route, navigation }){
         startDate: jobStartDate || null,
         endDate: jobEndDate || null,
         notes: jobNotes,
+        tags: Array.isArray(jobTags) ? jobTags.filter(Boolean) : [],
+        assignedTo: assignedTechId || null,
         customer: {
           name: jobCustomerName,
           phone: jobCustomerPhone,
@@ -1950,11 +2661,11 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
           addressLine2: jobAddressLine2,
           city: jobCity,
           state: jobStateCode,
-          zip: jobZip,
-        },
-      }, token);
+        zip: jobZip,
+      },
+    }, token);
       Alert.alert('Saved', 'Job details updated.');
-      loadJob();
+      navigation.navigate('Tabs', { screen: 'Jobs' });
     } catch(e) {
       Alert.alert('Error', e.message || 'Unable to save job');
     }
@@ -1974,6 +2685,177 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
       }}
     ]);
   };
+  const handleAssignTech = useCallback(async (techId) => {
+    if (!canAssignTech) return;
+    setAssigningTech(true);
+    try {
+      await api(`/jobs/${jobId}`,'PATCH',{ assignedTo: techId || null }, token);
+      setAssignedTechId(techId || null);
+      await loadJob();
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Unable to update assignment.');
+    } finally {
+      setAssigningTech(false);
+    }
+  }, [canAssignTech, jobId, token, loadJob]);
+  const scheduleFollowUp = useCallback(async (channel) => {
+    const scheduledFor = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const payload = {};
+    if (channel === 'EMAIL') {
+      if (!jobCustomerEmail) return false;
+      payload.email = jobCustomerEmail;
+    }
+    if (channel === 'SMS') {
+      if (!jobCustomerPhone) return false;
+      payload.phone = jobCustomerPhone;
+    }
+    try {
+      await api('/reminders', 'POST', {
+        jobId,
+        channel,
+        template: 'FOLLOW_UP',
+        scheduledFor,
+        payload,
+      }, token);
+      return true;
+    } catch (error) {
+      console.warn('Failed to schedule follow up', error?.message || error);
+      return false;
+    }
+  }, [jobCustomerEmail, jobCustomerPhone, jobId, token]);
+  const handleCallCustomer = useCallback(async () => {
+    if (!jobCustomerPhone) {
+      Alert.alert('Missing phone', 'Add a phone number to call this customer.');
+      return;
+    }
+    await Linking.openURL(`tel:${jobCustomerPhone}`);
+    const channel = jobCustomerEmail ? 'EMAIL' : 'SMS';
+    const scheduled = await scheduleFollowUp(channel);
+    if (scheduled) {
+      Alert.alert('Reminder scheduled', 'We will send a branded follow-up in 24 hours.');
+    }
+  }, [jobCustomerPhone, jobCustomerEmail, scheduleFollowUp]);
+  const handleTextCustomer = useCallback(async () => {
+    if (!jobCustomerPhone) {
+      Alert.alert('Missing phone', 'Add a phone number to text this customer.');
+      return;
+    }
+    const message = `Reminder: Job #${jobId} is scheduled soon.`;
+    await Linking.openURL(`sms:${jobCustomerPhone}?body=${encodeURIComponent(message)}`);
+    const scheduled = await scheduleFollowUp('SMS');
+    if (scheduled) {
+      Alert.alert('Reminder scheduled', 'We will automatically follow up with a branded text.');
+    }
+  }, [jobCustomerPhone, jobId, scheduleFollowUp]);
+  const handleEmailCustomer = useCallback(async () => {
+    if (!jobCustomerEmail) {
+      Alert.alert('Missing email', 'Add an email to message this customer.');
+      return;
+    }
+    const subject = `Job #${jobId} update`;
+    const body = `Hi ${jobCustomerName || ''},%0D%0A%0D%0AJust a quick update on your project. Let us know if you have any questions.%0D%0A%0D%0AThanks!`;
+    await Linking.openURL(`mailto:${jobCustomerEmail}?subject=${encodeURIComponent(subject)}&body=${body}`);
+    const scheduled = await scheduleFollowUp('EMAIL');
+    if (scheduled) {
+      Alert.alert('Reminder scheduled', 'We will nudge the client with a branded email follow-up.');
+    }
+  }, [jobCustomerEmail, jobCustomerName, jobId, scheduleFollowUp]);
+  const handleOpenJobsiteMap = useCallback(() => {
+    const parts = [
+      jobAddressLine1?.trim(),
+      jobAddressLine2?.trim(),
+      [jobCity?.trim(), jobStateCode?.trim()].filter(Boolean).join(' '),
+      jobZip?.trim(),
+    ].filter(Boolean);
+    if (!parts.length) {
+      Alert.alert('Missing address', 'Add the jobsite address to open maps.');
+      return;
+    }
+    const address = parts.join(', ');
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
+  }, [jobAddressLine1, jobAddressLine2, jobCity, jobStateCode, jobZip]);
+  const handleUploadAttachment = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission && permission.granted === false) {
+        Alert.alert('Permission needed', 'Allow photo library access to attach files.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsMultipleSelection: false,
+        base64: false,
+      });
+      if (result.canceled) return;
+      const asset = result.assets && result.assets[0];
+      if (!asset?.uri) return;
+      setUploadingAttachment(true);
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      const dataUrl = `data:${asset.mimeType || 'image/jpeg'};base64,${base64}`;
+      const uploaded = await api('/upload/image','POST',{ dataUrl }, token);
+      await api('/attachments','POST',{
+        entityType: 'JOB',
+        entityId: jobId,
+        fileUrl: uploaded.url,
+      }, token);
+      await loadAttachments();
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Unable to upload attachment.');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }, [jobId, token, loadAttachments]);
+  const handleDeleteAttachment = useCallback((id) => {
+    Alert.alert('Delete attachment', 'Remove this file from the job?', [
+      { text:'Cancel', style:'cancel' },
+      {
+        text:'Delete',
+        style:'destructive',
+        onPress: async () => {
+          setJobAttachments(prev => prev.filter(att => Number(att.id) !== Number(id)));
+          try {
+            await api(`/attachments/${id}`,'DELETE',null,token);
+            await loadAttachments();
+          } catch (e) {
+            await loadAttachments();
+            Alert.alert('Error', e.message || 'Unable to delete attachment.');
+          }
+        }
+      }
+    ]);
+  }, [token, loadAttachments]);
+  const addActivityEntry = useCallback(async () => {
+    const trimmed = newActivityNote.trim();
+    if (!trimmed) {
+      Alert.alert('Missing note', 'Add details before posting to the log.');
+      return;
+    }
+    const entry = {
+      note: trimmed,
+      author: user?.fullName || user?.name || user?.email || 'Team',
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      setAddingActivity(true);
+      const nextLog = [entry, ...(Array.isArray(jobActivity) ? jobActivity : [])];
+      await api(`/jobs/${jobId}`,'PATCH',{ activityLog: nextLog }, token);
+      setJobActivity(nextLog);
+      setNewActivityNote('');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Unable to save activity.');
+    } finally {
+      setAddingActivity(false);
+    }
+  }, [newActivityNote, jobActivity, jobId, token, user]);
+  const activityItems = useMemo(() => {
+    const list = Array.isArray(jobActivity) ? jobActivity.slice() : [];
+    return list.sort((a, b) => {
+      const aTime = new Date(a?.createdAt || 0).getTime();
+      const bTime = new Date(b?.createdAt || 0).getTime();
+      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+    });
+  }, [jobActivity]);
   return (
     <SafeAreaView style={{ flex:1, backgroundColor: palette.background }}>
       <ScrollView
@@ -2002,8 +2884,10 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
             value={jobNotes}
             onChangeText={setJobNotes}
             multiline
-            style={{ minHeight: 112, textAlignVertical: 'top' }}
+            style={[{ minHeight: 112, textAlignVertical: 'top', lineHeight: lineHeightFor(typography.body), marginTop: "10px" }]}
           />
+          <Text style={{ color: palette.muted, fontWeight:'600', marginTop: spacing(1.5), marginBottom: spacing(0.5) }}>Tags</Text>
+          <TagInput value={jobTags} onChange={setJobTags} placeholder="Add job tags (e.g. Roofing, Urgent)" suggestions={tagSuggestions} />
           <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop: spacing(2) }}>
             <QuickAction label="Delete job" tone="danger" onPress={deleteJob} />
             <TouchableOpacity
@@ -2029,6 +2913,13 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
             keyboardType="email-address"
             autoCapitalize="none"
           />
+          {(jobCustomerPhone || jobCustomerEmail) ? (
+            <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(1.5) }}>
+              {jobCustomerPhone ? <QuickAction label="Call" tone="primary" onPress={handleCallCustomer} /> : null}
+              {jobCustomerPhone ? <QuickAction label="Text" tone="primary" onPress={handleTextCustomer} /> : null}
+              {jobCustomerEmail ? <QuickAction label="Email" tone="muted" onPress={handleEmailCustomer} /> : null}
+            </View>
+          ) : null}
         </SurfaceCard>
 
         <SurfaceCard style={{ padding: spacing(2.5), marginBottom: spacing(3) }}>
@@ -2037,23 +2928,154 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
           </Text>
           <FormInput placeholder="Address line 1" value={jobAddressLine1} onChangeText={setJobAddressLine1} />
           <FormInput placeholder="Address line 2" value={jobAddressLine2} onChangeText={setJobAddressLine2} />
-          <View style={{ flexDirection:'row', columnGap: spacing(1.5) }}>
-            <FormInput placeholder="City" value={jobCity} onChangeText={setJobCity} style={{ flex:1, marginBottom: 0 }} />
+          <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1.5), rowGap: spacing(1.5) }}>
+            <FormInput placeholder="City" value={jobCity} onChangeText={setJobCity} style={[{ flex:1, minWidth: '48%', marginBottom: 0 }]} />
             <FormInput
               placeholder="State"
               value={jobStateCode}
               onChangeText={setJobStateCode}
               autoCapitalize="characters"
-              style={{ width: 96, marginBottom: 0 }}
+              style={[{ flexBasis: '20%', minWidth: 80, marginBottom: 0 }]}
             />
             <FormInput
               placeholder="ZIP"
               value={jobZip}
               onChangeText={setJobZip}
               keyboardType="numeric"
-              style={{ width: 112, marginBottom: 0 }}
+              style={[{ flexBasis: '28%', minWidth: 120, marginBottom: 0 }]}
             />
           </View>
+        <View style={{ marginTop: spacing(1.5) }}>
+          <QuickAction label="Open in Maps" tone="primary" onPress={handleOpenJobsiteMap} />
+        </View>
+      </SurfaceCard>
+
+      {(canAssignTech || assignedTechId || assignedTechName) ? (
+        <SurfaceCard style={{ padding: spacing(2.5), marginBottom: spacing(3) }}>
+          <Text style={{ color: palette.muted, fontSize: typography.small, fontWeight:'700', textTransform:'uppercase', marginBottom: spacing(1) }}>
+            Assigned technician
+          </Text>
+          {canAssignTech ? (
+            team.length ? (
+              <>
+                <TechSelector
+                  team={team}
+                  value={assignedTechId}
+                  onSelect={handleAssignTech}
+                  allowClear
+                  label="Tap to assign"
+                />
+                {assigningTech ? (
+                  <Text style={{ color: palette.muted, marginTop: spacing(1) }}>Updating assignment...</Text>
+                ) : null}
+              </>
+            ) : (
+              <Text style={{ color: palette.muted }}>
+                Invite teammates from Team Management to assign jobs.
+              </Text>
+            )
+          ) : (
+            <Text style={{ color: palette.text }}>
+              {assignedTechName ? assignedTechName : 'Unassigned'}
+            </Text>
+          )}
+        </SurfaceCard>
+      ) : null}
+
+      <SurfaceCard style={{ padding: spacing(2.5), marginBottom: spacing(3) }}>
+        <Text style={{ color: palette.muted, fontSize: typography.small, fontWeight:'700', textTransform:'uppercase' }}>Attachments</Text>
+        <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>Store site photos, permits, and approvals for the crew.</Text>
+        <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(1.5) }}>
+          <QuickAction
+              label={uploadingAttachment ? 'Uploading...' : 'Add photo'}
+              tone={uploadingAttachment ? 'muted' : 'primary'}
+              onPress={uploadingAttachment ? undefined : handleUploadAttachment}
+            />
+            <QuickAction label="Refresh" tone="muted" onPress={loadAttachments} />
+          </View>
+          {loadingAttachments ? (
+            <View style={{ alignItems:'center', paddingVertical: spacing(2) }}>
+              <ActivityIndicator color={palette.primary} />
+              <Text style={{ color: palette.muted, marginTop: spacing(1) }}>Syncing attachments...</Text>
+            </View>
+          ) : jobAttachments.length === 0 ? (
+            <Text style={{ color: palette.muted, marginTop: spacing(1.5) }}>No attachments yet.</Text>
+          ) : (
+            jobAttachments.map(att => {
+              const url = att?.fileUrl || '';
+              const isImage = typeof url === 'string' && /\.(png|jpe?g|gif|webp)$/i.test(url);
+              return (
+                <View
+                  key={att.id}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: palette.border,
+                    borderRadius: 12,
+                    marginTop: spacing(1.5),
+                    overflow: 'hidden',
+                    backgroundColor: palette.surface,
+                  }}
+                >
+                  {isImage && url ? (
+                    <TouchableOpacity onPress={() => url ? Linking.openURL(url) : null} activeOpacity={0.85}>
+                      <Image source={{ uri: url }} style={{ height: 180, width: '100%' }} resizeMode="cover" />
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={{ padding: spacing(1.5) }}>
+                    <Text style={{ color: palette.text, fontWeight:'600' }}>{att.caption || 'Attachment'}</Text>
+                    <Text style={{ color: palette.muted, fontSize: typography.small, marginTop: spacing(0.5) }}>
+                      {(att.uploader?.fullName || att.uploader?.email || 'Uploaded')} {att.createdAt ? `• ${new Date(att.createdAt).toLocaleString()}` : ''}
+                    </Text>
+                    <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(1.5) }}>
+                      {url ? <QuickAction label="Open" tone="muted" onPress={() => Linking.openURL(url)} /> : null}
+                      <QuickAction label="Delete" tone="danger" onPress={() => handleDeleteAttachment(att.id)} />
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </SurfaceCard>
+
+        <SurfaceCard style={{ padding: spacing(2.5), marginBottom: spacing(3) }}>
+          <Text style={{ color: palette.muted, fontSize: typography.small, fontWeight:'700', textTransform:'uppercase' }}>Activity log</Text>
+          <Text style={{ color: palette.muted, marginTop: spacing(0.5), marginBottom: spacing(1.5) }}>Capture approvals, client updates, and job milestones.</Text>
+          <TextInput
+            multiline
+            placeholder="Add a note for the team"
+            placeholderTextColor={palette.muted}
+            value={newActivityNote}
+            onChangeText={setNewActivityNote}
+            style={[formInputBaseStyle, { minHeight: 96, textAlignVertical: 'top' }]}
+          />
+          <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(1) }}>
+            <QuickAction
+              label={addingActivity ? 'Saving...' : 'Add entry'}
+              tone={addingActivity ? 'muted' : 'primary'}
+              onPress={addingActivity ? undefined : addActivityEntry}
+            />
+            <QuickAction label="Refresh" tone="muted" onPress={loadJob} />
+          </View>
+          {activityItems.length === 0 ? (
+            <Text style={{ color: palette.muted, marginTop: spacing(1.5) }}>No log entries yet.</Text>
+          ) : (
+            activityItems.map((entry, idx) => (
+              <View
+                key={`${entry.createdAt || idx}-${idx}`}
+                style={{
+                  marginTop: spacing(1.5),
+                  borderTopWidth: idx === 0 ? 0 : 1,
+                  borderTopColor: palette.border,
+                  paddingTop: idx === 0 ? 0 : spacing(1.5),
+                }}
+              >
+                <Text style={{ color: palette.text, fontWeight:'600' }}>{entry.note}</Text>
+                <Text style={{ color: palette.muted, fontSize: typography.small, marginTop: spacing(0.5) }}>
+                  {(entry.author || 'Team')} {entry.createdAt ? `• ${new Date(entry.createdAt).toLocaleString()}` : ''}
+                </Text>
+              </View>
+            ))
+          )}
         </SurfaceCard>
 
         {canManageChangeOrders ? (
@@ -2330,22 +3352,31 @@ function LeadsScreen({ navigation }){
   const [leads, setLeads] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [convertingId, setConvertingId] = useState(null);
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api('/leads', 'GET', null, token);
-      setLeads(data);
+      const filtered = data.filter(item => (item.status || '').toUpperCase() !== 'CONVERTED');
+      setLeads(filtered);
       db.transaction(tx => {
         tx.executeSql && tx.executeSql('DELETE FROM leads_cache;');
-        data.forEach(l => tx.executeSql && tx.executeSql(
+        filtered.forEach(l => tx.executeSql && tx.executeSql(
           'INSERT OR REPLACE INTO leads_cache (id, description, status) VALUES (?,?,?)',
           [l.id, l.description || '', l.status || 'NEW']
         ));
       });
     } catch(e){
       db.transaction(tx =>
-        tx.executeSql && tx.executeSql('SELECT id, description, status FROM leads_cache', [], (_, { rows }) => setLeads(rows._array || []))
+        tx.executeSql && tx.executeSql(
+          'SELECT id, description, status FROM leads_cache',
+          [],
+          (_, { rows }) => {
+            const fallback = (rows._array || []).filter(item => (item.status || '').toUpperCase() !== 'CONVERTED');
+            setLeads(fallback);
+          }
+        )
       );
     }
     finally {
@@ -2370,14 +3401,39 @@ function LeadsScreen({ navigation }){
       { text:'Delete', style:'destructive', onPress: async () => {
         try {
           await api(`/leads/${lead.id}`,'DELETE',null,token);
-          setLeads(prev => prev.filter(l => l.id !== lead.id));
+          setLeads(prev => prev.filter(l => Number(l.id) !== Number(lead.id)));
           db.transaction(tx => tx.executeSql && tx.executeSql('DELETE FROM leads_cache WHERE id=?', [lead.id]));
+          Alert.alert('Deleted', 'Lead removed.');
+          await fetchLeads();
         } catch(err) {
           Alert.alert('Error', err.message || 'Unable to delete lead');
         }
       }}
     ]);
-  }, [token]);
+  }, [token, fetchLeads]);
+
+  const convertLead = useCallback(async (lead) => {
+    if (!lead?.id) return;
+    const leadId = lead.id;
+    setConvertingId(leadId);
+    try {
+      const job = await api(`/leads/${leadId}/convert`, 'POST', null, token);
+      setLeads(prev => prev.filter(item => Number(item.id) !== Number(leadId)));
+      db.transaction(tx =>
+        tx.executeSql && tx.executeSql('DELETE FROM leads_cache WHERE id=?', [leadId])
+      );
+      if (job?.id) {
+        navigation.navigate('JobDetail', { jobId: job.id });
+      } else {
+        Alert.alert('Converted', 'Lead converted to a job.');
+        navigation.navigate('Jobs');
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Unable to convert lead.');
+    } finally {
+      setConvertingId(null);
+    }
+  }, [token, navigation]);
 
   const newLeadsCount = leads.filter(l => (l.status || '').toUpperCase() === 'NEW').length;
 
@@ -2394,6 +3450,7 @@ function LeadsScreen({ navigation }){
     ].filter(Boolean);
     const address = addressParts.join(', ');
     const statusKey = (lead.status || 'NEW').toUpperCase();
+    const tags = Array.isArray(lead.tags) ? lead.tags : [];
     return (
       <SurfaceCard key={lead.id}>
         <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
@@ -2407,9 +3464,30 @@ function LeadsScreen({ navigation }){
         {customer.email ? <Text style={{ color: palette.muted }}>{customer.email}</Text> : null}
         {address ? <Text style={{ color: palette.muted, marginTop: spacing(1) }}>{address}</Text> : null}
         <Text numberOfLines={3} style={{ color: palette.text, marginTop: spacing(1.5) }}>{lead.description || 'No scope captured yet.'}</Text>
+        {tags.length ? (
+          <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(1) }}>
+            {tags.map(tag => (
+              <View key={`${lead.id}-${tag}`} style={{ backgroundColor: '#e0f3f0', borderRadius: 999, paddingHorizontal: spacing(1.5), paddingVertical: spacing(0.5) }}>
+                <Text style={{ color: palette.primaryStrong, fontWeight:'600', fontSize: typography.small }}>{`#${tag}`}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(2) }}>
           <QuickAction label="Open" onPress={() => navigation.navigate('EstimateEditor', { leadId: lead.id })} />
-          <QuickAction label="Convert" tone="success" onPress={() => navigation.navigate('Jobs')} />
+          {(statusKey !== 'CONVERTED') ? (
+            <QuickAction
+              label={convertingId === lead.id ? 'Converting...' : 'Convert'}
+              tone="success"
+              onPress={convertingId === lead.id ? undefined : () => convertLead(lead)}
+            />
+          ) : (
+            <QuickAction
+              label="View job"
+              tone="muted"
+              onPress={() => navigation.navigate('Jobs')}
+            />
+          )}
           <QuickAction label="Delete" tone="danger" onPress={() => deleteLead(lead)} />
         </View>
       </SurfaceCard>
@@ -2427,10 +3505,10 @@ function LeadsScreen({ navigation }){
           <View style={{ marginBottom: spacing(3) }}>
             <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom: spacing(2) }}>
               <View>
-                <Text style={{ color: palette.text, fontSize: typography.h1, fontWeight:'700' }}>Leads</Text>
-                <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>Keep the funnel moving</Text>
+                <Text style={{ color: palette.ink, fontSize: typography.h1, fontWeight:'700' }}>Lead pipeline</Text>
+                <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>Reliable intake for crews who close every job.</Text>
               </View>
-              <QuickAction label="New lead" onPress={() => navigation.navigate('NewLead')} />
+              <QuickAction tone="primary" label="New lead" onPress={() => navigation.navigate('NewLead')} />
             </View>
             <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(2), rowGap: spacing(2) }}>
               <View style={{ flexBasis:'48%', minWidth: 160 }}>
@@ -2471,9 +3549,33 @@ function NewLeadScreen({ navigation }){
   const [city, setCity] = useState('');
   const [stateCode, setStateCode] = useState('');
   const [zip, setZip] = useState('');
+  const [leadTags, setLeadTags] = useState([]);
+  const [tagSuggestions, setTagSuggestions] = useState(defaultTagSeeds);
   const [showCustomerSection, setShowCustomerSection] = useState(false);
   const [showJobsiteSection, setShowJobsiteSection] = useState(false);
   const statuses = ['NEW','CONTACTED','ESTIMATING','CONVERTED','CLOSED_LOST'];
+  useEffect(() => {
+    (async () => {
+      try {
+        const [leadsData, jobsData] = await Promise.all([
+          api('/leads','GET',null,token),
+          api('/jobs','GET',null,token),
+        ]);
+        const library = new Set(defaultTagSeeds);
+        if (Array.isArray(leadsData)) {
+          leadsData.forEach(lead => {
+            (Array.isArray(lead.tags) ? lead.tags : []).forEach(tag => library.add(String(tag)));
+          });
+        }
+        if (Array.isArray(jobsData)) {
+          jobsData.forEach(job => {
+            (Array.isArray(job.tags) ? job.tags : []).forEach(tag => library.add(String(tag)));
+          });
+        }
+        setTagSuggestions(Array.from(library));
+      } catch {}
+    })();
+  }, [token]);
 
   const buildPayload = () => {
     const customer = [customerName, customerPhone, customerEmail].some(v => v && v.trim())
@@ -2497,6 +3599,7 @@ function NewLeadScreen({ navigation }){
       status,
       customer,
       jobsite,
+      tags: Array.isArray(leadTags) ? leadTags.filter(Boolean) : [],
     };
   };
 
@@ -2570,6 +3673,8 @@ function NewLeadScreen({ navigation }){
               );
             })}
           </View>
+          <Text style={{ color: palette.muted, fontWeight:'600', marginTop: spacing(2), marginBottom: spacing(0.75) }}>Tags</Text>
+          <TagInput value={leadTags} onChange={setLeadTags} placeholder="Add tags (e.g. Roof, Urgent)" suggestions={tagSuggestions} />
           <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop: spacing(3) }}>
             <QuickAction label="Save offline" tone="muted" onPress={queueLead} />
             <TouchableOpacity
@@ -2873,6 +3978,7 @@ function EstimateEditorScreen({ route, navigation }){
         jobsite: jobsitePayload,
       }, token);
       Alert.alert('Saved', 'Lead details updated.');
+      navigation.navigate('Tabs', { screen: 'Leads' });
     } catch (e) {
       Alert.alert('Error', e.message || 'Unable to save lead details');
     }
@@ -2945,11 +4051,11 @@ function EstimateEditorScreen({ route, navigation }){
               marginBottom: spacing(1.5),
             }}
           />
-          <View style={{ flexDirection:'row', columnGap: spacing(1.5), marginBottom: spacing(1.5) }}>
+          <View style={{ flexDirection:'column', columnGap: spacing(1.5), marginBottom: spacing(1.5) }}>
             <TextInput
               placeholder="Qty"
               placeholderTextColor={palette.muted}
-              value={qty}
+              // value={qty}
               onChangeText={setQty}
               keyboardType="numeric"
               style={{
@@ -2958,6 +4064,7 @@ function EstimateEditorScreen({ route, navigation }){
                 borderColor: palette.border,
                 borderRadius: 12,
                 padding: spacing(2),
+                marginBottom: spacing(1.5),
                 color: palette.text,
                 backgroundColor: palette.surfaceMuted,
               }}
@@ -2965,7 +4072,7 @@ function EstimateEditorScreen({ route, navigation }){
             <TextInput
               placeholder="Unit price"
               placeholderTextColor={palette.muted}
-              value={price}
+              // value={price}
               onChangeText={setPrice}
               keyboardType="numeric"
               style={{
@@ -2974,6 +4081,7 @@ function EstimateEditorScreen({ route, navigation }){
                 borderColor: palette.border,
                 borderRadius: 12,
                 padding: spacing(2),
+                marginBottom: spacing(1.5),
                 color: palette.text,
                 backgroundColor: palette.surfaceMuted,
               }}
@@ -3105,6 +4213,65 @@ function ScheduleScreen({ navigation }){
       .filter(job => inRange(job.startDate))
       .sort((a, b) => new Date(a.startDate || 0) - new Date(b.startDate || 0))
   ), [jobs, inRange]);
+  const openJobInMaps = useCallback((job) => {
+    if (!job) return;
+    const jobsite = job.Jobsite || {};
+    const addressParts = [
+      jobsite.addressLine1,
+      jobsite.addressLine2,
+      [jobsite.city, jobsite.state].filter(Boolean).join(' '),
+      jobsite.zip,
+    ].filter(part => part && String(part).trim());
+    if (!addressParts.length) {
+      Alert.alert('Missing address', 'Add a jobsite address to open navigation.');
+      return;
+    }
+    const address = addressParts.join(', ');
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
+  }, []);
+  const optimizeRoute = useCallback(() => {
+    if (!filteredJobs.length) {
+      Alert.alert('No jobs', 'Apply filters or add jobs before optimizing a route.');
+      return;
+    }
+    const addresses = filteredJobs
+      .map(job => {
+        const site = job.Jobsite || {};
+        const parts = [
+          site.addressLine1,
+          site.addressLine2,
+          [site.city, site.state].filter(Boolean).join(' '),
+          site.zip,
+        ].filter(part => part && String(part).trim());
+        return parts.length ? parts.join(', ') : null;
+      })
+      .filter(Boolean);
+    if (!addresses.length) {
+      Alert.alert('Missing addresses', 'Add jobsite addresses to build a route.');
+      return;
+    }
+    if (addresses.length === 1) {
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addresses[0])}`);
+      return;
+    }
+    const origin = addresses[0];
+    const destination = addresses[addresses.length - 1];
+    const waypointsRaw = addresses.slice(1, -1);
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
+    if (waypointsRaw.length) {
+      url += `&waypoints=${waypointsRaw.map(addr => encodeURIComponent(addr)).join('|')}`;
+    }
+    Linking.openURL(url);
+  }, [filteredJobs]);
+  const techSummary = useMemo(() => {
+    const buckets = {};
+    filteredJobs.forEach(job => {
+      const tech = job?.assignedTech;
+      const key = tech?.fullName || tech?.email || 'Unassigned';
+      buckets[key] = (buckets[key] || 0) + 1;
+    });
+    return Object.entries(buckets);
+  }, [filteredJobs]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -3136,8 +4303,22 @@ function ScheduleScreen({ navigation }){
             <Text style={{ color: palette.text, fontWeight:'600' }}>Offline queue</Text>
             <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>{queueCount} items waiting to sync</Text>
           </View>
-          <QuickAction label={syncing ? 'Syncing...' : 'Sync now'} tone={syncing ? 'muted' : 'primary'} onPress={syncing ? undefined : handleSync} />
+          <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1) }}>
+            <QuickAction label={syncing ? 'Syncing...' : 'Sync now'} tone={syncing ? 'muted' : 'primary'} onPress={syncing ? undefined : handleSync} />
+            <QuickAction label="Optimize route" tone="muted" onPress={optimizeRoute} />
+          </View>
         </SurfaceCard>
+        {techSummary.length ? (
+          <SurfaceCard style={{ marginBottom: spacing(3) }}>
+            <Text style={{ color: palette.text, fontWeight:'600', marginBottom: spacing(1) }}>Technician availability</Text>
+            {techSummary.map(([name, count]) => (
+              <View key={name} style={{ flexDirection:'row', justifyContent:'space-between', marginTop: spacing(0.5) }}>
+                <Text style={{ color: palette.muted }}>{name}</Text>
+                <Text style={{ color: palette.text }}>{count} job{count === 1 ? '' : 's'}</Text>
+              </View>
+            ))}
+          </SurfaceCard>
+        ) : null}
 
         {filteredJobs.length === 0 ? (
           <SurfaceCard>
@@ -3155,6 +4336,7 @@ function ScheduleScreen({ navigation }){
             const address = addressParts.join(', ');
             const startLabel = job.startDate ? `Starts ${formatDate(job.startDate)}` : 'No start date';
             const endLabel = job.endDate ? ` - Due ${formatDate(job.endDate)}` : '';
+            const assignedTech = job.assignedTech;
             return (
               <SurfaceCard key={job.id} style={{ marginBottom: spacing(2) }}>
                 <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
@@ -3165,8 +4347,14 @@ function ScheduleScreen({ navigation }){
                   {startLabel}{endLabel}
                 </Text>
                 {address ? <Text style={{ color: palette.muted, marginTop: spacing(1) }}>{address}</Text> : null}
+                {assignedTech ? (
+                  <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>
+                    Assigned to {assignedTech.fullName || assignedTech.email || 'Tech'}
+                  </Text>
+                ) : null}
                 {job.notes ? <Text style={{ color: palette.muted, marginTop: spacing(1) }}>{job.notes}</Text> : null}
                 <View style={{ flexDirection:'row', flexWrap:'wrap', columnGap: spacing(1), rowGap: spacing(1), marginTop: spacing(2) }}>
+                  {address ? <QuickAction label="Map" tone="muted" onPress={() => openJobInMaps(job)} /> : null}
                   <QuickAction label="Open job" onPress={() => navigation.navigate('JobDetail', { jobId: job.id })} />
                   <QuickAction label="View tasks" onPress={() => navigation.navigate('JobDetail', { jobId: job.id, tab: 'tasks' })} tone="muted" />
                 </View>
@@ -3184,7 +4372,10 @@ function ProfileScreen({ navigation }){
   return (
     <SafeAreaView style={{ flex:1, backgroundColor: palette.background }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing(2), paddingVertical: spacing(2), paddingBottom: spacing(6) }}>
-        <Text style={{ color: palette.text, fontSize: typography.h1, fontWeight:'700', marginBottom: spacing(2) }}>Profile</Text>
+        <View style={{ marginBottom: spacing(2) }}>
+          <Text style={{ color: palette.ink, fontSize: typography.h1, fontWeight:'700' }}>Profile</Text>
+          <Text style={{ color: palette.muted, marginTop: spacing(0.5) }}>Keep your access secure and your team aligned.</Text>
+        </View>
         <SurfaceCard style={{ marginBottom: spacing(3) }}>
           <Text style={{ color: palette.muted, fontSize: typography.small, textTransform:'uppercase', fontWeight:'600' }}>Account</Text>
           <Text style={{ color: palette.text, fontSize: typography.h2, fontWeight:'700', marginTop: spacing(1) }}>{user?.name || user?.fullName || 'Team member'}</Text>
@@ -3219,7 +4410,7 @@ function TabsNav(){
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: palette.primary,
-        tabBarStyle: { backgroundColor: '#fff', display: hideTabs ? 'none' : 'flex' },
+        tabBarStyle: { backgroundColor: palette.surface, display: hideTabs ? 'none' : 'flex' },
       }}
     >
       <Tabs.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Home' }} />
@@ -3265,29 +4456,29 @@ function MobileHeader({ currentRoute, onNavigate, isAdmin }){
 
   return (
     <>
-      <SafeAreaView style={{ backgroundColor: '#0B0C10' }}>
-        <View style={{ paddingHorizontal: spacing(2), paddingVertical: spacing(1.5), flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
-          <TouchableOpacity
-            onPress={() => setMenuVisible(true)}
-            accessibilityLabel="Open navigation menu"
-            accessibilityRole="button"
-            style={{ padding: spacing(1) }}
-          >
-            <View style={{ width: 24, height: 2, backgroundColor: '#fff', borderRadius: 999, marginBottom: 4 }} />
-            <View style={{ width: 24, height: 2, backgroundColor: '#fff', borderRadius: 999, marginBottom: 4 }} />
-            <View style={{ width: 24, height: 2, backgroundColor: '#fff', borderRadius: 999 }} />
-          </TouchableOpacity>
-          <Text style={{ color:'#fff', fontSize: typography.h1, fontWeight:'700' }}>Precision Tracker</Text>
-          <View style={{ width: 24 }} />
-        </View>
-      </SafeAreaView>
+        <SafeAreaView style={{ backgroundColor: palette.surface }}>
+          <View style={{ paddingHorizontal: spacing(2), paddingVertical: spacing(1.5), flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              accessibilityLabel="Open navigation menu"
+              accessibilityRole="button"
+              style={{ padding: spacing(1) }}
+            >
+              <View style={{ width: 24, height: 2, backgroundColor: palette.ink, borderRadius: 999, marginBottom: 4 }} />
+              <View style={{ width: 24, height: 2, backgroundColor: palette.ink, borderRadius: 999, marginBottom: 4 }} />
+              <View style={{ width: 24, height: 2, backgroundColor: palette.ink, borderRadius: 999 }} />
+            </TouchableOpacity>
+            <Text style={{ color: palette.ink, fontSize: typography.h1, fontWeight:'700' }}>Precision Tracker</Text>
+            <View style={{ width: 24 }} />
+          </View>
+        </SafeAreaView>
       <Modal
         visible={menuVisible}
         animationType="fade"
         transparent
         onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={{ flex:1, backgroundColor:'rgba(15,23,42,0.6)', justifyContent:'flex-start', padding: spacing(3) }}>
+        <View style={{ flex:1, backgroundColor:'rgba(15,23,42,0.45)', justifyContent:'flex-start', padding: spacing(3) }}>
           <View style={{ backgroundColor: palette.surface, borderRadius: 16, padding: spacing(2.5) }}>
             <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom: spacing(2) }}>
               <Text style={{ color: palette.text, fontSize: typography.h2, fontWeight:'700' }}>Navigate</Text>
@@ -3306,7 +4497,7 @@ function MobileHeader({ currentRoute, onNavigate, isAdmin }){
                     paddingVertical: spacing(1.25),
                     paddingHorizontal: spacing(1.5),
                     borderRadius: 12,
-                    backgroundColor: selected ? '#d9f2ed' : palette.surfaceMuted,
+                    backgroundColor: selected ? 'rgba(16,185,129,0.12)' : palette.surfaceMuted,
                     marginBottom: spacing(1),
                   }}
                 >
@@ -3323,7 +4514,7 @@ function MobileHeader({ currentRoute, onNavigate, isAdmin }){
   );
 }
 
-function LoginScreen() {
+function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('admin@example.com');
   // If you kept the hardcoded backend login, default to test123:
   const [password, setPassword] = useState('test123');
@@ -3357,7 +4548,7 @@ function LoginScreen() {
       } catch {}
 
       // Optional: toast
-      Alert.alert('Welcome', 'Logged in');
+        Alert.alert('Welcome back', 'Precision in every project.');
     } catch (e) {
       Alert.alert('Error', e.message);
     } finally {
@@ -3366,24 +4557,171 @@ function LoginScreen() {
   }
 
   return (
-    <View style={{ flex: 1, padding: 20, justifyContent: 'center' }}>
-      <Text style={{ fontSize: 24, marginBottom: 16 }}>PrecisionTracker</Text>
-      <TextInput
-        placeholder="Email"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-        style={{ borderWidth: 1, padding: 12, marginBottom: 12 }}
-      />
-      <TextInput
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={{ borderWidth: 1, padding: 12, marginBottom: 12 }}
-      />
-      <Button title={busy ? 'Signing in...' : 'Sign in'} onPress={login} disabled={busy} />
-    </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', padding: spacing(3) }}>
+        <SurfaceCard style={{ padding: spacing(3), borderRadius: 20 }}>
+          <View style={{ width: spacing(5), height: spacing(5), borderRadius: 14, backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center', marginBottom: spacing(2) }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: typography.h2 }}>PT</Text>
+          </View>
+          <Text style={{ color: palette.ink, fontSize: 30, fontWeight: '800', lineHeight: lineHeightFor(30) }}>Precision Tracker</Text>
+          <Text style={{ color: palette.muted, marginTop: spacing(1), lineHeight: lineHeightFor(typography.body) }}>
+            Precision in every project. Sign in to keep your crews aligned and closing work.
+          </Text>
+          <View style={{ marginTop: spacing(3) }}>
+            <FormInput
+              placeholder="Work email"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <FormInput
+              placeholder="Password"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity
+              onPress={login}
+              activeOpacity={0.85}
+              disabled={busy}
+              style={{
+                backgroundColor: palette.primary,
+                paddingVertical: spacing(2),
+                borderRadius: 12,
+                alignItems: 'center',
+                marginTop: spacing(1),
+                opacity: busy ? 0.7 : 1,
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: typography.body }}>
+                {busy ? 'Signing in…' : 'Sign in'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={{ color: palette.muted, fontSize: typography.small, marginTop: spacing(2) }}>
+              Built for professionals who don’t miss details.
+            </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Register')}
+              accessibilityRole="button"
+              style={{ marginTop: spacing(2), alignItems: 'center' }}
+            >
+              <Text style={{ color: palette.primaryStrong, fontWeight: '600' }}>Need an account? Register</Text>
+            </TouchableOpacity>
+          </View>
+        </SurfaceCard>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function RegisterScreen({ navigation }) {
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert('Missing email', 'Enter your work email to create an account.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      Alert.alert('Password too short', 'Use at least 6 characters so your account stays secure.');
+      return;
+    }
+    if (password !== confirm) {
+      Alert.alert('Passwords do not match', 'Double-check your password confirmation.');
+      return;
+    }
+    try {
+      setBusy(true);
+      await api('/auth/register', 'POST', {
+        email: trimmedEmail,
+        password,
+        fullName: fullName.trim() || undefined,
+        role: 'ADMIN',
+      });
+      Alert.alert('Account created', 'Sign in with your new credentials.');
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Unable to register. Try again or contact support.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: spacing(3) }}>
+        <SurfaceCard style={{ padding: spacing(3), borderRadius: 20 }}>
+          <View style={{ width: spacing(5), height: spacing(5), borderRadius: 14, backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center', marginBottom: spacing(2) }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: typography.h2 }}>PT</Text>
+          </View>
+          <Text style={{ color: palette.ink, fontSize: 26, fontWeight: '800', lineHeight: lineHeightFor(26) }}>
+            Create your workspace
+          </Text>
+          <Text style={{ color: palette.muted, marginTop: spacing(1), lineHeight: lineHeightFor(typography.body) }}>
+            We’ll set up Precision Tracker so your crew can hit the ground running.
+          </Text>
+
+          <View style={{ marginTop: spacing(3) }}>
+            <FormInput
+              placeholder="Full name"
+              value={fullName}
+              onChangeText={setFullName}
+            />
+            <FormInput
+              placeholder="Work email"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <FormInput
+              placeholder="Password (min 6 characters)"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+            <FormInput
+              placeholder="Confirm password"
+              secureTextEntry
+              value={confirm}
+              onChangeText={setConfirm}
+            />
+            <TouchableOpacity
+              onPress={submit}
+              activeOpacity={0.85}
+              disabled={busy}
+              style={{
+                backgroundColor: palette.primary,
+                paddingVertical: spacing(2),
+                borderRadius: 12,
+                alignItems: 'center',
+                marginTop: spacing(1),
+                opacity: busy ? 0.7 : 1,
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: typography.body }}>
+                {busy ? 'Creating account…' : 'Register'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              style={{ marginTop: spacing(2), alignItems: 'center' }}
+            >
+              <Text style={{ color: palette.muted, fontWeight: '600' }}>Back to sign in</Text>
+            </TouchableOpacity>
+          </View>
+        </SurfaceCard>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -3401,9 +4739,9 @@ export default function App(){
     let mounted = true;
     (async () => {
       try {
-        const [tok, usr] = await Promise.all([
-          SecureStore.getItemAsync('auth_token'),
-          SecureStore.getItemAsync('auth_user')
+          const [tok, usr] = await Promise.all([
+            SecureStore.getItemAsync('auth_token'),
+            SecureStore.getItemAsync('auth_user')
         ]);
         if (mounted && tok) {
           setToken(tok);
@@ -3472,18 +4810,19 @@ export default function App(){
           />
         ) : null}
         <View style={{ flex:1 }}>
-          <NavigationContainer
-            ref={navigationRef}
-            onReady={updateCurrentRoute}
-            onStateChange={updateCurrentRoute}
-          >
-            {!token ? (
-              <Stack.Navigator>
-                <Stack.Screen name="Login" component={LoginScreen} />
-              </Stack.Navigator>
-            ) : (
-              <Stack.Navigator>
-                <Stack.Screen name="Tabs" component={TabsNav} options={{ headerShown:false }} />
+            <NavigationContainer
+              ref={navigationRef}
+              onReady={updateCurrentRoute}
+              onStateChange={updateCurrentRoute}
+            >
+              {!token ? (
+                <Stack.Navigator>
+                  <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+                  <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Create account' }} />
+                </Stack.Navigator>
+              ) : (
+                <Stack.Navigator>
+                  <Stack.Screen name="Tabs" component={TabsNav} options={{ headerShown:false }} />
                 <Stack.Screen name="NewLead" component={NewLeadScreen} options={{ title:'New Lead' }} />
                 <Stack.Screen name="EstimateEditor" component={EstimateEditorScreen} options={{ title:'Estimate' }} />
                 <Stack.Screen name="Signature" component={SignatureScreen} options={{ title:'Signature' }} />

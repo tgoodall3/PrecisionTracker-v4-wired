@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 
+
 export function requireAuth(roles = []) {
   return (req, res, next) => {
     const auth = req.headers.authorization || '';

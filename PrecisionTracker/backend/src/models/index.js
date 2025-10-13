@@ -27,6 +27,7 @@ import PaymentModel from './payment.js';
 import AttachmentModel from './attachment.js';
 import ChangeOrderModel from './changeOrder.js';
 import CalendarEventModel from './calendarEvent.js';
+import ReminderModel from './reminder.js';
 
 export const User = UserModel(sequelize, DataTypes);
 export const Customer = CustomerModel(sequelize, DataTypes);
@@ -41,6 +42,7 @@ export const Payment = PaymentModel(sequelize, DataTypes);
 export const Attachment = AttachmentModel(sequelize, DataTypes);
 export const ChangeOrder = ChangeOrderModel(sequelize, DataTypes);
 export const CalendarEvent = CalendarEventModel(sequelize, DataTypes);
+export const Reminder = ReminderModel(sequelize, DataTypes);
 
 // Associations
 Customer.hasMany(Jobsite, { foreignKey: 'customerId' });
@@ -78,3 +80,8 @@ ChangeOrder.belongsTo(Job, { foreignKey: 'jobId' });
 Job.hasMany(CalendarEvent, { foreignKey: 'jobId' });
 CalendarEvent.belongsTo(Job, { foreignKey: 'jobId' });
 CalendarEvent.belongsTo(User, { as: 'assignee', foreignKey: 'assigneeId' });
+
+Reminder.belongsTo(Job, { foreignKey: 'jobId' });
+Reminder.belongsTo(User, { foreignKey: 'userId' });
+Job.hasMany(Reminder, { foreignKey: 'jobId' });
+User.hasMany(Reminder, { foreignKey: 'userId' });

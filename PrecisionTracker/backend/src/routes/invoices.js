@@ -57,6 +57,64 @@ router.get('/summary', requireAuth(), async (req, res) => {
   res.json(summary);
 });
 
+router.get('/export/csv', requireAuth(), async (_req, res) => {
+  const invoices = await Invoice.findAll({ include: [Payment], order: [['issuedAt', 'DESC']] });
+  const headers = ['Invoice Number', 'Job ID', 'Status', 'Issued At', 'Due At', 'Amount', 'Collected', 'Outstanding'];
+  const rows = invoices.map(inv => {
+    const payments = (inv.Payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const balance = Math.max(Number(inv.amount || 0) - payments, 0);
+    return [
+      inv.number,
+      inv.jobId ?? '',
+      inv.status ?? 'DRAFT',
+      inv.issuedAt || '',
+      inv.dueAt || '',
+      Number(inv.amount || 0).toFixed(2),
+      payments.toFixed(2),
+      balance.toFixed(2),
+    ];
+  });
+  const csv = [headers, ...rows].map(line => line.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="invoices.csv"');
+  res.send(csv);
+});
+
+router.get('/export/quickbooks', requireAuth(), async (_req, res) => {
+  const invoices = await Invoice.findAll({ include: [Payment], order: [['issuedAt', 'DESC']] });
+  const header = '!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tNAME\tMEMO\n!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tNAME\tMEMO\n!ENDTRNS';
+  const lines = [header];
+  invoices.forEach(inv => {
+    const date = inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString('en-US') : '';
+    const memo = `Invoice ${inv.number}`;
+    lines.push([
+      'TRNS',
+      inv.id,
+      'INVOICE',
+      date,
+      'Accounts Receivable',
+      Number(inv.amount || 0).toFixed(2),
+      inv.jobId || '',
+      memo,
+    ].join('\t'));
+    lines.push([
+      'SPL',
+      inv.id,
+      'INVOICE',
+      date,
+      'Income',
+      (-Number(inv.amount || 0)).toFixed(2),
+      inv.jobId || '',
+      memo,
+    ].join('\t'));
+    lines.push('ENDTRNS');
+  });
+  const payload = lines.join('\n');
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Content-Disposition', 'attachment; filename="invoices.iif"');
+  res.send(payload);
+});
+
 router.post('/', requireAuth(), async (req, res) => {
   const payload = { ...req.body };
   let number = payload.number ? String(payload.number).trim() : '';

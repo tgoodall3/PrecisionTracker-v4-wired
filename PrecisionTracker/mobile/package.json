@@ -24,7 +24,9 @@
     "expo-constants": "~16.0.2",
     "expo-file-system": "~17.0.1",
     "expo-image-picker": "~16.0.3",
+    "expo-print": "~13.0.1",
     "expo-secure-store": "~13.0.2",
+    "expo-sharing": "~12.0.1",
     "expo-sqlite": "~14.0.2",
     "process": "^0.11.10",
     "react": "18.2.0",
@@ -37,6 +39,7 @@
     "react-native-svg": "^15.2.0",
     "react-native-view-shot": "^3.8.0",
     "react-native-web": "~0.19.10",
+    "square": "^43.1.0",
     "stream-browserify": "^3.0.0",
     "typescript": "~5.3.3"
   },

@@ -29,6 +29,7 @@
     "sequelize": "^6.37.3",
     "sqlite3": "^5.1.7",
     "stripe": "^16.0.0",
+    "@square/square": "^44.0.0",
     "svg2png-wasm": "^1.4.0",
     "twilio": "^4.22.0",
     "uuid": "^9.0.1"

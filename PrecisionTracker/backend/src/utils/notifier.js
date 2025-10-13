@@ -26,3 +26,24 @@ export async function sendSms(to, body){
   const resp = await client.messages.create({ from: process.env.TWILIO_FROM, to, body });
   return { sent: true, sid: resp.sid };
 }
+
+export async function sendPushNotification(token, title, body, data = {}) {
+  if (!token) return { sent: false, reason: 'missing token' };
+  if (!token.startsWith('ExponentPushToken')) {
+    return { sent: false, reason: 'invalid token' };
+  }
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: token, title, body, data }),
+    });
+    const payload = await response.json();
+    if (payload?.data?.status === 'ok') {
+      return { sent: true, id: payload.data.id };
+    }
+    return { sent: false, reason: payload?.data?.message || 'Unknown push response' };
+  } catch (error) {
+    return { sent: false, reason: error.message || 'Push send failed' };
+  }
+}
