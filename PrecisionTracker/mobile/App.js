@@ -139,7 +139,12 @@ async function api(path, method='GET', body, token){
     const message =
       (data && typeof data === 'object' && (data.error || data.message)) ||
       (typeof data === 'string' ? data : 'Request failed');
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = data;
+    error.body = rawBody;
+    error.path = path;
+    throw error;
   }
 
   return data;
@@ -1722,12 +1727,18 @@ function InvoicesScreen({ navigation }){
               await load(false);
               Alert.alert('Deleted', 'Invoice removed.');
             } catch (e) {
-              Alert.alert('Error', e.message || 'Unable to delete invoice.');
+              if (e?.status === 404) {
+                setInvoices(prev => prev.filter(item => Number(item.id) !== Number(invoice.id)));
+                await load(false);
+                Alert.alert('Already removed', 'Invoice was already deleted.');
+              } else {
+                Alert.alert('Error', e.message || 'Unable to delete invoice.');
+              }
             }
           }
         }
     ]);
-  }, [token, load]);
+  }, [token, load, setInvoices]);
 
   if (user?.role !== 'ADMIN') {
     return (
@@ -2151,7 +2162,14 @@ ${newCity}, ${newStateCode} ${newZip}` : ''}`
           Alert.alert('Deleted', 'Job removed.');
           await load(false);
         } catch(e) {
-          Alert.alert('Error', e.message || 'Unable to delete job');
+          if (e?.status === 404) {
+            setJobs(prev => prev.filter(job => Number(job.id) !== Number(id)));
+            db.transaction(tx => tx.executeSql && tx.executeSql('DELETE FROM jobs_cache WHERE id=?', [id]));
+            await load(false);
+            Alert.alert('Already removed', 'Job was already deleted.');
+          } else {
+            Alert.alert('Error', e.message || 'Unable to delete job');
+          }
         }
       } }
     ]);
@@ -2588,8 +2606,37 @@ function JobDetailScreen({ route, navigation }){
       setAssignedTechId(j.assignedTo ?? j.assignedTech?.id ?? null);
       const techLabel = j.assignedTech ? (j.assignedTech.fullName || j.assignedTech.email || `Tech #${j.assignedTech.id}`) : '';
       setAssignedTechName(techLabel);
-    } catch(e) { }
-  }, [jobId, token]);
+    } catch(e) {
+      if (e?.status === 404) {
+        setJobName('');
+        setJobStartDate('');
+        setJobEndDate('');
+        setJobNotes('');
+        setJobCustomerName('');
+        setJobCustomerPhone('');
+        setJobCustomerEmail('');
+        setJobAddressLine1('');
+        setJobAddressLine2('');
+        setJobCity('');
+        setJobStateCode('');
+        setJobZip('');
+        setJobTags([]);
+        setJobActivity([]);
+        setAssignedTechId(null);
+        setAssignedTechName('');
+        Alert.alert('Job removed', 'This job no longer exists. Returning to jobs.', [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('Tabs', { screen: 'Jobs' }),
+          },
+        ]);
+      } else if (e?.message) {
+        Alert.alert('Error', e.message);
+      } else {
+        Alert.alert('Error', 'Unable to load job details.');
+      }
+    }
+  }, [jobId, token, navigation]);
   const loadTeam = useCallback(async () => {
     if (!canAssignTech) return;
     try {
@@ -2680,7 +2727,13 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
           Alert.alert('Deleted', 'Job removed.');
           navigation.navigate('Tabs', { screen:'Jobs' });
         }catch(e){
-          Alert.alert('Error', e.message || 'Unable to delete job');
+          if (e?.status === 404) {
+            db.transaction(tx => tx.executeSql('DELETE FROM jobs_cache WHERE id=?', [jobId]));
+            Alert.alert('Already removed', 'Job was already deleted.');
+            navigation.navigate('Tabs', { screen:'Jobs' });
+          } else {
+            Alert.alert('Error', e.message || 'Unable to delete job');
+          }
         }
       }}
     ]);
@@ -2819,7 +2872,11 @@ ${jobCity}, ${jobStateCode} ${jobZip}` : ''}` : null,
             await loadAttachments();
           } catch (e) {
             await loadAttachments();
-            Alert.alert('Error', e.message || 'Unable to delete attachment.');
+            if (e?.status === 404) {
+              Alert.alert('Already removed', 'Attachment was already deleted.');
+            } else {
+              Alert.alert('Error', e.message || 'Unable to delete attachment.');
+            }
           }
         }
       }
@@ -3176,7 +3233,19 @@ function JobTasks({ jobId }){
   const remove = (id)=>{
     Alert.alert('Delete task', 'Remove this task?', [
       { text:'Cancel', style:'cancel' },
-      { text:'Delete', style:'destructive', onPress: async ()=>{ await api(`/tasks/${id}`,'DELETE',null,token); load(); } },
+      { text:'Delete', style:'destructive', onPress: async ()=>{
+        try {
+          await api(`/tasks/${id}`,'DELETE',null,token);
+          load();
+        } catch (e) {
+          if (e?.status === 404) {
+            load();
+            Alert.alert('Already removed', 'Task was already deleted.');
+          } else {
+            Alert.alert('Error', e.message || 'Unable to delete task');
+          }
+        }
+      } },
     ]);
   };
   return (
@@ -3253,7 +3322,19 @@ function JobSchedule({ jobId }){
   const remove = (id)=>{
     Alert.alert('Delete event', 'Remove this schedule item?', [
       { text:'Cancel', style:'cancel' },
-      { text:'Delete', style:'destructive', onPress: async ()=>{ await api(`/calendar/${id}`,'DELETE',null,token); load(); } },
+      { text:'Delete', style:'destructive', onPress: async ()=>{
+        try {
+          await api(`/calendar/${id}`,'DELETE',null,token);
+          load();
+        } catch (e) {
+          if (e?.status === 404) {
+            load();
+            Alert.alert('Already removed', 'Event was already deleted.');
+          } else {
+            Alert.alert('Error', e.message || 'Unable to delete event.');
+          }
+        }
+      } },
     ]);
   };
   return (
@@ -3406,7 +3487,14 @@ function LeadsScreen({ navigation }){
           Alert.alert('Deleted', 'Lead removed.');
           await fetchLeads();
         } catch(err) {
-          Alert.alert('Error', err.message || 'Unable to delete lead');
+          if (err?.status === 404) {
+            setLeads(prev => prev.filter(l => Number(l.id) !== Number(lead.id)));
+            db.transaction(tx => tx.executeSql && tx.executeSql('DELETE FROM leads_cache WHERE id=?', [lead.id]));
+            await fetchLeads();
+            Alert.alert('Already removed', 'Lead was already deleted.');
+          } else {
+            Alert.alert('Error', err.message || 'Unable to delete lead');
+          }
         }
       }}
     ]);
@@ -4257,9 +4345,15 @@ function ScheduleScreen({ navigation }){
     const origin = addresses[0];
     const destination = addresses[addresses.length - 1];
     const waypointsRaw = addresses.slice(1, -1);
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
+    const MAX_WAYPOINTS = 23; // Google Maps supports up to 25 stops including origin and destination.
+    if (waypointsRaw.length > MAX_WAYPOINTS) {
+      Alert.alert('Too many stops', `Google Maps can optimize up to ${MAX_WAYPOINTS + 2} stops at once. Narrow your job filters and try again.`);
+      return;
+    }
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
     if (waypointsRaw.length) {
-      url += `&waypoints=${waypointsRaw.map(addr => encodeURIComponent(addr)).join('|')}`;
+      const encodedWaypoints = waypointsRaw.map(addr => encodeURIComponent(addr));
+      url += `&waypoints=optimize:true|${encodedWaypoints.join('|')}`;
     }
     Linking.openURL(url);
   }, [filteredJobs]);

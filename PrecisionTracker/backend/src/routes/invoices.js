@@ -1,5 +1,5 @@
 import express from 'express';
-import { Invoice, Payment } from '../models/index.js';
+import { Invoice, Payment, Job } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -117,6 +117,19 @@ router.get('/export/quickbooks', requireAuth(), async (_req, res) => {
 
 router.post('/', requireAuth(), async (req, res) => {
   const payload = { ...req.body };
+  if (payload.jobId !== undefined && payload.jobId !== null && payload.jobId !== '') {
+    const jobId = parseInt(payload.jobId, 10);
+    if (Number.isNaN(jobId)) {
+      return res.status(400).json({ error: 'Job ID must be a number.' });
+    }
+    const job = await Job.findByPk(jobId);
+    if (!job) {
+      return res.status(400).json({ error: 'Job not found. Create the job first or remove the Job ID.' });
+    }
+    payload.jobId = jobId;
+  } else {
+    payload.jobId = null;
+  }
   let number = payload.number ? String(payload.number).trim() : '';
 
   if (!number) {

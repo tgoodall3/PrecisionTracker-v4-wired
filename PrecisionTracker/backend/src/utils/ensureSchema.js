@@ -39,8 +39,20 @@ export async function ensureSchema() {
   } catch (e) {
     await qi.createTable('reminders', {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-      jobId: { type: DataTypes.INTEGER, allowNull: true },
-      userId: { type: DataTypes.INTEGER, allowNull: true },
+      jobId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'jobs', key: 'id' },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
+      },
+      userId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'users', key: 'id' },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      },
       channel: { type: DataTypes.ENUM('EMAIL','SMS','PUSH'), allowNull: false, defaultValue: 'EMAIL' },
       template: { type: DataTypes.STRING, allowNull: false },
       payload: { type: DataTypes.JSON, allowNull: true },

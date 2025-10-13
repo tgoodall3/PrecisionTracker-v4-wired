@@ -3,7 +3,30 @@ import { Sequelize, DataTypes } from 'sequelize';
 const dialect = process.env.DB_DIALECT || 'sqlite';
 let sequelize;
 if (dialect === 'sqlite') {
-  sequelize = new Sequelize({ dialect, storage: process.env.DB_STORAGE || './data/dev.sqlite', logging: false });
+  sequelize = new Sequelize({
+    dialect,
+    storage: process.env.DB_STORAGE || './data/dev.sqlite',
+    logging: false,
+    pool: {
+      max: 1,
+      min: 0,
+      idle: 10000,
+      acquire: 60000,
+    },
+    dialectOptions: {
+      busyTimeout: +(process.env.SQLITE_BUSY_TIMEOUT || 60000),
+    },
+    retry: {
+      match: [/SQLITE_BUSY/],
+      max: 5,
+    },
+  });
+  sequelize.addHook('afterConnect', (connection) => new Promise((resolve, reject) => {
+    connection.run('PRAGMA foreign_keys = ON', (err) => {
+      if (err) return reject(err);
+      return resolve();
+    });
+  }));
 } else {
   sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASS, {
     host: process.env.DB_HOST || 'localhost',
@@ -45,43 +68,153 @@ export const CalendarEvent = CalendarEventModel(sequelize, DataTypes);
 export const Reminder = ReminderModel(sequelize, DataTypes);
 
 // Associations
-Customer.hasMany(Jobsite, { foreignKey: 'customerId' });
-Jobsite.belongsTo(Customer, { foreignKey: 'customerId' });
+Customer.hasMany(Jobsite, {
+  foreignKey: { name: 'customerId', allowNull: false },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+Jobsite.belongsTo(Customer, {
+  foreignKey: { name: 'customerId', allowNull: false },
+  onDelete: 'CASCADE',
+});
 
-Customer.hasMany(Lead, { foreignKey: 'customerId' });
-Lead.belongsTo(Customer, { foreignKey: 'customerId' });
-Lead.belongsTo(Jobsite, { foreignKey: 'jobsiteId' });
+Customer.hasMany(Lead, {
+  foreignKey: { name: 'customerId', allowNull: true },
+  onDelete: 'SET NULL',
+  hooks: true,
+});
+Lead.belongsTo(Customer, {
+  foreignKey: { name: 'customerId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Lead.belongsTo(Jobsite, {
+  foreignKey: { name: 'jobsiteId', allowNull: true },
+  onDelete: 'SET NULL',
+});
 
-Estimate.belongsTo(Lead, { foreignKey: 'leadId' });
-Estimate.belongsTo(Customer, { foreignKey: 'customerId' });
-Estimate.belongsTo(Jobsite, { foreignKey: 'jobsiteId' });
-Estimate.hasMany(EstimateItem, { foreignKey: 'estimateId' });
-EstimateItem.belongsTo(Estimate, { foreignKey: 'estimateId' });
+Estimate.belongsTo(Lead, {
+  foreignKey: { name: 'leadId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Estimate.belongsTo(Customer, {
+  foreignKey: { name: 'customerId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Estimate.belongsTo(Jobsite, {
+  foreignKey: { name: 'jobsiteId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Estimate.hasMany(EstimateItem, {
+  foreignKey: { name: 'estimateId', allowNull: false },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+EstimateItem.belongsTo(Estimate, {
+  foreignKey: { name: 'estimateId', allowNull: false },
+  onDelete: 'CASCADE',
+});
 
-Job.belongsTo(Estimate, { foreignKey: 'estimateId' });
-Job.belongsTo(Customer, { foreignKey: 'customerId' });
-Job.belongsTo(Jobsite, { foreignKey: 'jobsiteId' });
-Job.belongsTo(User, { as: 'assignedTech', foreignKey: 'assignedTo' });
-User.hasMany(Job, { foreignKey: 'assignedTo', as: 'assignedJobs' });
-Job.hasMany(Task, { foreignKey: 'jobId' });
-Task.belongsTo(Job, { foreignKey: 'jobId' });
-Task.belongsTo(User, { as: 'assignee', foreignKey: 'assignedTo' });
+Job.belongsTo(Estimate, {
+  foreignKey: { name: 'estimateId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Job.belongsTo(Customer, {
+  foreignKey: { name: 'customerId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Job.belongsTo(Jobsite, {
+  foreignKey: { name: 'jobsiteId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+Job.belongsTo(User, {
+  as: 'assignedTech',
+  foreignKey: { name: 'assignedTo', allowNull: true },
+  onDelete: 'SET NULL',
+});
+User.hasMany(Job, {
+  foreignKey: { name: 'assignedTo', allowNull: true },
+  as: 'assignedJobs',
+});
+Job.hasMany(Task, {
+  foreignKey: { name: 'jobId', allowNull: false },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+Task.belongsTo(Job, {
+  foreignKey: { name: 'jobId', allowNull: false },
+  onDelete: 'CASCADE',
+});
+Task.belongsTo(User, {
+  as: 'assignee',
+  foreignKey: { name: 'assignedTo', allowNull: true },
+  onDelete: 'SET NULL',
+});
 
-Invoice.belongsTo(Job, { foreignKey: 'jobId' });
-Invoice.hasMany(Payment, { foreignKey: 'invoiceId' });
-Payment.belongsTo(Invoice, { foreignKey: 'invoiceId' });
+Invoice.belongsTo(Job, {
+  foreignKey: { name: 'jobId', allowNull: true },
+  onDelete: 'CASCADE',
+});
+Job.hasMany(Invoice, {
+  foreignKey: { name: 'jobId', allowNull: true },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+Invoice.hasMany(Payment, {
+  foreignKey: { name: 'invoiceId', allowNull: false },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+Payment.belongsTo(Invoice, {
+  foreignKey: { name: 'invoiceId', allowNull: false },
+  onDelete: 'CASCADE',
+});
 
-Attachment.belongsTo(User, { as: 'uploader', foreignKey: 'uploadedBy' });
+Attachment.belongsTo(User, {
+  as: 'uploader',
+  foreignKey: { name: 'uploadedBy', allowNull: true },
+  onDelete: 'SET NULL',
+});
+
+Job.hasMany(ChangeOrder, {
+  foreignKey: { name: 'jobId', allowNull: false },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+ChangeOrder.belongsTo(Job, {
+  foreignKey: { name: 'jobId', allowNull: false },
+  onDelete: 'CASCADE',
+});
+
+Job.hasMany(CalendarEvent, {
+  foreignKey: { name: 'jobId', allowNull: false },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+CalendarEvent.belongsTo(Job, {
+  foreignKey: { name: 'jobId', allowNull: false },
+  onDelete: 'CASCADE',
+});
+CalendarEvent.belongsTo(User, {
+  as: 'assignee',
+  foreignKey: { name: 'assigneeId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+
+Job.hasMany(Reminder, {
+  foreignKey: { name: 'jobId', allowNull: true },
+  onDelete: 'CASCADE',
+  hooks: true,
+});
+Reminder.belongsTo(Job, {
+  foreignKey: { name: 'jobId', allowNull: true },
+  onDelete: 'CASCADE',
+});
+Reminder.belongsTo(User, {
+  foreignKey: { name: 'userId', allowNull: true },
+  onDelete: 'SET NULL',
+});
+User.hasMany(Reminder, {
+  foreignKey: { name: 'userId', allowNull: true },
+});
 
 export { sequelize };
-Job.hasMany(ChangeOrder, { foreignKey: 'jobId' });
-ChangeOrder.belongsTo(Job, { foreignKey: 'jobId' });
-
-Job.hasMany(CalendarEvent, { foreignKey: 'jobId' });
-CalendarEvent.belongsTo(Job, { foreignKey: 'jobId' });
-CalendarEvent.belongsTo(User, { as: 'assignee', foreignKey: 'assigneeId' });
-
-Reminder.belongsTo(Job, { foreignKey: 'jobId' });
-Reminder.belongsTo(User, { foreignKey: 'userId' });
-Job.hasMany(Reminder, { foreignKey: 'jobId' });
-User.hasMany(Reminder, { foreignKey: 'userId' });

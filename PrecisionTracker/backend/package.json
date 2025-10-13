@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "db:reset": "node src/scripts/reset.js",
+    "db:dump": "node src/scripts/dump-schema.js",
     "db:sync": "node src/scripts/sync.js",
     "lint": "eslint ."
   },
