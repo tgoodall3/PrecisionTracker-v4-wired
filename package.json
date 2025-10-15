@@ -2,6 +2,7 @@
   "dependencies": {
     "date-fns": "^4.1.0",
     "expo": "^54.0.0",
+    "git": "^0.1.5",
     "react-datepicker": "^8.7.0",
     "sqlite3": "^5.1.7"
   }
